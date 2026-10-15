@@ -1,0 +1,56 @@
+name: Mobile runtime
+
+# Builds the Java runtimes for iOS and Android (mobile-runtime/build.sh) and, on a mobile-runtime-* tag, publishes them as
+# the release's assets
+on:
+  push:
+    tags: ['mobile-runtime-*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [ios-simulator, ios-device, android]
+    runs-on: macos-15
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '26'
+      - name: Tools
+        run: brew install autoconf fontconfig
+      - name: Android NDK
+        if: matrix.target == 'android'
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;27.2.12479018" > /dev/null
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+      - name: Build
+        run: BOOT_JDK="$JAVA_HOME" mobile-runtime/build.sh ${{ matrix.target }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jdk-${{ matrix.target }}
+          path: dist/*
+          retention-days: 7
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/mobile-runtime-')
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --notes "Java runtimes for iOS and Android (mobile-runtime/README.md), built from $GITHUB_SHA."
