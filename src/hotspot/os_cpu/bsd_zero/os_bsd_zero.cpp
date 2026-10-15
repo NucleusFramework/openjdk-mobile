@@ -274,10 +274,29 @@ int os::extra_bang_size_in_bytes() {
 }
 
 #if defined(AARCH64) && defined(__APPLE__)
+// The shared code tracks the W^X state of each thread (see os_bsd_aarch64.cpp); Zero generates no code, so the state
+// only switches the page protection of the MAP_JIT region where there is one (never on iOS)
+WXMode DefaultWXWriteMode = WXArmedForWrite;
+THREAD_LOCAL bool os::_jit_exec_enabled;
+
 void os::current_thread_enable_wx(WXMode mode) {
+  _jit_exec_enabled = mode != WXWrite;
 #ifndef __IOS__
   pthread_jit_write_protect_np(mode == WXExec);
 #endif
+}
+
+bool Thread::wx_enable_write() {
+  if (_wx_state == WXArmedForWrite) {
+    _wx_state = WXWrite;
+    os::current_thread_enable_wx(WXWrite);
+    return true;
+  }
+  return false;
+}
+
+void os::thread_wx_enable_write_impl() {
+  Thread::current()->wx_enable_write();
 }
 #endif
 

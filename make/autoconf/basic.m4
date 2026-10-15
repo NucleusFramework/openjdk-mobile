@@ -370,7 +370,8 @@ AC_DEFUN_ONCE([BASIC_SETUP_DEVKIT],
       [UTIL_PREPEND_TO_PATH([EXTRA_PATH],$with_extra_path)]
   )
 
-  if test "x$OPENJDK_BUILD_OS" = "xmacosx"; then
+  # An Android target built on macOS has the NDK's sysroot, not an Xcode one
+  if test "x$OPENJDK_BUILD_OS" = "xmacosx" && test "x$OPENJDK_TARGET_OS" != "xandroid"; then
     BASIC_SETUP_XCODE_SYSROOT
   fi
 

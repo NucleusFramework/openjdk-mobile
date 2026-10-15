@@ -675,6 +675,16 @@ void os::init_system_properties_values() {
     }
     Arguments::set_dll_dir(buf);
 
+#ifdef __BIONIC__
+    // A JVM linked into an Android app's executable: its natives are beside the executable (the APK's native
+    // libraries), its classes and data where the app put them, given as JAVA_HOME
+    const char* app_java_home = ::getenv("JAVA_HOME");
+    if (app_java_home != nullptr && app_java_home[0] != '\0' && strlen(app_java_home) < bufsize) {
+      strcpy(buf, app_java_home);
+      pslash = nullptr;
+    }
+#endif
+
     // Get rid of /lib, if binary is libjvm.so,
     // or cut off /bin, if it is a statically linked binary.
 #ifndef __BIONIC__

@@ -193,7 +193,7 @@ AC_DEFUN_ONCE([JDKOPT_SETUP_JDK_OPTIONS],
   if HOTSPOT_CHECK_JVM_VARIANT(zero); then
     INCLUDE_SA=false
   fi
-  if test "x$OPENJDK_TARGET_OS" = xaix ; then
+  if test "x$OPENJDK_TARGET_OS" = xaix || test "x$OPENJDK_TARGET_OS" = xandroid ; then
     INCLUDE_SA=false
   fi
   if test "x$OPENJDK_TARGET_CPU" = xs390x ; then

@@ -1620,6 +1620,10 @@ static void warn_fail_commit_memory(char* addr, size_t size, bool exec,
 //       left at the time of mmap(). This could be a potential
 //       problem.
 bool os::pd_commit_memory(char* addr, size_t size, bool exec) {
+#ifdef __IOS__
+  // iOS forbids executable mappings without the JIT entitlement; Zero never runs code from the code cache
+  exec = false;
+#endif
   int prot = exec ? PROT_READ|PROT_WRITE|PROT_EXEC : PROT_READ|PROT_WRITE;
 #if defined(__OpenBSD__)
   // XXX: Work-around mmap/MAP_FIXED bug temporarily on OpenBSD

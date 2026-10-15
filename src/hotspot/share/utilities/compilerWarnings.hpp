@@ -127,8 +127,12 @@
   }
 
 // Both Linux and AIX C libraries declare functions noexcept.
-// Neither BSD nor Windows C libraries declare functions noexcept.
+// Neither BSD nor Windows C libraries declare functions noexcept, nor Android's bionic.
+#ifdef __ANDROID__
+#define FORBIDDEN_FUNCTION_COND_NOEXCEPT_noexcept
+#else
 #define FORBIDDEN_FUNCTION_COND_NOEXCEPT_noexcept NOT_WINDOWS(NOT_BSD(noexcept))
+#endif
 #define FORBIDDEN_FUNCTION_COND_NOEXCEPT_
 
 #ifndef FORBIDDEN_FUNCTION_IMPORT_SPEC

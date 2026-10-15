@@ -476,8 +476,9 @@ AC_DEFUN([FLAGS_SETUP_CFLAGS_HELPER],
   elif test "x$OPENJDK_TARGET_OS" = xwindows; then
     CFLAGS_OS_DEF_JVM="-D_WINDOWS -DWIN32 -D_JNI_IMPLEMENTATION_"
   elif test "x$OPENJDK_TARGET_OS" = xandroid; then
-    CFLAGS_OS_DEF_JVM="-target aarch64-linux-android32 -DLINUX -D_ALLBSD_SOURCE -DANDROID"
-    CFLAGS_OS_DEF_JDK="-target aarch64-linux-android32 -DLINUX -D__USE_BSD"
+    # The API level comes with the compiler (the NDK's aarch64-linux-android<api>-clang)
+    CFLAGS_OS_DEF_JVM="-DLINUX -D_ALLBSD_SOURCE -DANDROID"
+    CFLAGS_OS_DEF_JDK="-DLINUX -D__USE_BSD -D_GNU_SOURCE"
   elif test "x$OPENJDK_TARGET_OS" = xios; then
     CFLAGS_OS_DEF_JVM="-D_ALLBSD_SOURCE -D__IOS__ -D_XOPEN_SOURCE"
     CFLAGS_OS_DEF_JDK="-D_ALLBSD_SOURCE -D__IOS__"

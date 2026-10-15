@@ -31,7 +31,11 @@
 #include "jni_util.h"
 #include "dlfcn.h"
 
-#if defined(LINUX) && (defined(_GNU_SOURCE) || \
+#if defined(__ANDROID__)
+/* Bionic's XSI strerror_r is exported as strerror_r itself (the GNU one is __gnu_strerror_r) */
+extern int xsi_strerror_r(int, char *, size_t) __asm__("strerror_r");
+#define strerror_r(a, b, c) xsi_strerror_r((a), (b), (c))
+#elif defined(LINUX) && (defined(_GNU_SOURCE) || \
          (defined(_POSIX_C_SOURCE) && _POSIX_C_SOURCE < 200112L \
              && defined(_XOPEN_SOURCE) && _XOPEN_SOURCE < 600))
 extern int __xpg_strerror_r(int, char *, size_t);

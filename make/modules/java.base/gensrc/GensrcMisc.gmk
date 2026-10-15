@@ -66,7 +66,10 @@ else
 endif
 
 # Normalize OPENJDK_TARGET_OS operating system name to match jdk.internal.util.OperatingSystem enum
-ifeq ($(OPENJDK_TARGET_OS), macosx)
+ifeq ($(OPENJDK_TARGET_OS), android)
+  # Android's Java code is Linux's (java.base is built from the Linux sources)
+  OPENJDK_TARGET_OS_CANONICAL := linux
+else ifeq ($(OPENJDK_TARGET_OS), macosx)
   OPENJDK_TARGET_OS_CANONICAL = macos
 else
   OPENJDK_TARGET_OS_CANONICAL := $(OPENJDK_TARGET_OS)
