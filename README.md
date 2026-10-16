@@ -15,6 +15,10 @@ OpenJDK's.
     defines forced on, `_GNU_SOURCE`), bionic's C library (`compilerWarnings.hpp`: no `noexcept`; `jni_util_md.c`: its
     XSI `strerror_r`), `java.home` from `JAVA_HOME` (`os_linux.cpp`: the natives are linked into the launcher), Linux
     as the Java code's OS (`GensrcMisc.gmk`), no serviceability agent (`jdk-options.m4`).
+- `inprocess.patch`, applied after it: on Android, `os::get_default_process_handle`, `os::lookup_function` and libjava's
+  `getProcessHandle` resolve in the shared library holding the VM (`dladdr`, then `dlopen` of its path, else of its
+  name when it is loaded from the APK itself, `RTLD_NOLOAD`) rather than in the process: an app's own library, loaded
+  `RTLD_LOCAL`, is invisible to the process' handle.
 - `build.sh`: builds a target from an OpenJDK 27 checkout and packages it; `jvm_launcher.c`: Android's launcher;
   `smoke/Smoke.java`: the program the CI runs with the x86_64 Android runtime on an emulator before a release (the JIT,
   threads, time zones, files).
@@ -32,7 +36,7 @@ recipe change). Each release's notes give the GA, its commit and the recipe it w
 | Asset | Contents |
 |---|---|
 | `jdk-mobile-<version>-ios-simulator-aarch64-b<build>.tar.gz`, `…-ios-device-…` | `static/`: `libjvm.a`, the JDK's native libraries and `libffi.a` |
-| `jdk-mobile-<version>-android-aarch64-b<build>.tar.gz`, `…-android-x64-…` | `jniLibs/<abi>/libjvmlauncher.so` (`arm64-v8a`, `x86_64`): the launcher, the VM linked in |
+| `jdk-mobile-<version>-android-aarch64-b<build>.tar.gz`, `…-android-x64-…` | `jniLibs/<abi>/libjvmlauncher.so` (`arm64-v8a`, `x86_64`): the launcher, the VM linked in; `static/`: `libjvm.a` and the JDK's native libraries, for the VM in the app's process |
 
 All of them hold `include/` (`jni.h`, `jni_md.h`) and `lib/`, the runtime's `java.home` (its own per architecture:
 some generated classes, `UnixConstants` among them, depend on it): `conf/`, `lib/` and the
@@ -55,8 +59,11 @@ app's jars anywhere (for example `App.app/lib/app`), on the class path given to 
 
 ## Android
 
-ART and HotSpot can't share a process (both define `JNI_CreateJavaVM`, both handle `SIGSEGV`): the app runs Java in a
-process of its own, the launcher, packaged among its native libraries (`packaging.jniLibs.useLegacyPackaging = true`, so
+Java runs either in a process of its own, the launcher, or in the app's, linked into a library of the app.
+
+### In a process of its own
+
+The launcher is packaged among the app's native libraries (`packaging.jniLibs.useLegacyPackaging = true`, so
 it is installed as a file it can execute), with `lib/` delivered into its files:
 
 ```
@@ -64,6 +71,21 @@ libjvmlauncher.so <java.home> <class path> <main class> [Java options...]
 ```
 
 Everything the VM prints goes to standard error; standard output is the program's alone.
+
+### In the app's process
+
+The app links the static libraries into a shared library of its own, with a bridge starting the VM. ART and HotSpot
+both define `JNI_CreateJavaVM`: linked `-Bsymbolic` and loaded `RTLD_LOCAL` (`System.loadLibrary`), the library binds
+to its own. ART's `libsigchain` chains HotSpot's `SIGSEGV` handler behind ART's fault manager; `-Xrs` leaves `SIGQUIT`
+and the other signals to ART.
+
+```
+-Wl,--whole-archive static/libjvm.a static/lib{java,nio,net,zip,jimage,verify,extnet,syslookup,management}.a
+-Wl,--no-whole-archive -Wl,-Bsymbolic -static-libstdc++ -lz -ldl -llog -lm
+```
+
+`--whole-archive` is required: the runtime finds its natives by name (`dlsym`, in that library: `inprocess.patch`).
+`java.home` comes from `JAVA_HOME`, as for the launcher.
 
 ## Building
 

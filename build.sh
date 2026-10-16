@@ -5,9 +5,10 @@
 #   ./build.sh ios-simulator | ios-device | android-aarch64 | android-x64 <OpenJDK 27 checkout> [dist dir] [asset name]
 #
 #   ios-*       Zero (the interpreter, as iOS forbids generated code), as static libraries the app links (arm64)
-#   android-*   the server VM (JIT), linked into a launcher the app runs as a process (jvm_launcher.c), Android 10+
+#   android-*   the server VM (JIT), linked into a launcher the app runs as a process (jvm_launcher.c), and as static
+#               libraries an app links into a library of its own, to run it in its process (arm64, x86_64), Android 10+
 #
-# Applies openjdk-mobile.patch to the checkout unless it is already applied. Needs autoconf and a boot JDK 26 or 27
+# Applies openjdk-mobile.patch, then inprocess.patch, to the checkout unless they are already applied. Needs autoconf and a boot JDK 26 or 27
 # (BOOT_JDK, else java_home -v 26 on macOS); iOS needs a macOS host with Xcode; Android builds from a Linux or macOS
 # host, with the NDK (ANDROID_NDK_HOME, else the latest of $ANDROID_HOME/ndk), a host clang (BUILD_CC/BUILD_CXX, else
 # the PATH's) and fontconfig's headers (java.desktop needs them to build; FONTCONFIG_INCLUDE, else brew's or
@@ -36,12 +37,14 @@ EXTRA_TARGETS="jdk.unsupported-java java.base-copy java.base-gendata"
 STAGE=$WORK/stage-$TARGET
 
 cd "$SRC"
-if git apply --check "$HERE/openjdk-mobile.patch" 2> /dev/null; then
-    git apply "$HERE/openjdk-mobile.patch"
-elif ! git apply --reverse --check "$HERE/openjdk-mobile.patch" 2> /dev/null; then
-    echo "openjdk-mobile.patch doesn't apply to this checkout" >&2
-    exit 1
-fi
+for patch in openjdk-mobile.patch inprocess.patch; do
+    if git apply --check "$HERE/$patch" 2> /dev/null; then
+        git apply "$HERE/$patch"
+    elif ! git apply --reverse --check "$HERE/$patch" 2> /dev/null; then
+        echo "$patch doesn't apply to this checkout" >&2
+        exit 1
+    fi
+done
 
 mkdir -p "$WORK"
 if [ ! -d "$WORK/support" ]; then
@@ -156,7 +159,7 @@ build_android() {
     # The launcher: an executable with the VM and the JDK's natives in, packaged as a library (Android only executes the
     # native code an APK holds)
     local build=$SRC/build/$conf libs=$SRC/build/$conf/images/static-libs/lib
-    rm -rf "$STAGE" && mkdir -p "$STAGE/jniLibs/$abi"
+    rm -rf "$STAGE" && mkdir -p "$STAGE/jniLibs/$abi" "$STAGE/static"
     local launcher=$STAGE/jniLibs/$abi/libjvmlauncher.so
     "$tc/bin/$triple$ANDROID_API-clang++" -x c -O2 -fPIE -pie \
         -I"$build/jdk/include" -I"$build/jdk/include/android" \
@@ -166,6 +169,12 @@ build_android() {
         "$libs/libjimage.a" "$libs/libverify.a" "$libs/libextnet.a" "$libs/libsyslookup.a" -Wl,--no-whole-archive \
         -Wl,--export-dynamic -static-libstdc++ -lz -ldl -llog -lm
     "$tc/bin/llvm-strip" --strip-debug "$launcher"
+    # The same, as static libraries, for an app running the VM in its own process (inprocess.patch)
+    cp "$libs/server/libjvm.a" "$STAGE/static/"
+    for lib in java nio net zip jimage verify extnet syslookup management; do
+        cp "$libs/lib$lib.a" "$STAGE/static/"
+    done
+    "$tc/bin/llvm-strip" --strip-debug "$STAGE"/static/*.a
     stage_jdk "$build/jdk" android
 }
 

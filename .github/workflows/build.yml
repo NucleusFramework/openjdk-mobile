@@ -1,8 +1,8 @@
 name: Build
 
 # Follows the JDK's stable line (openjdk/jdk27u): every day, and when the recipe changes, if its latest GA and this recipe
-# have no release yet, builds the iOS and Android runtimes from it with openjdk-mobile.patch and publishes them, in the
-# same run, as jdk-mobile-<version>b<build>.<revision> (see README.md)
+# have no release yet, builds the iOS and Android runtimes from it with openjdk-mobile.patch and inprocess.patch and
+# publishes them, in the same run, as jdk-mobile-<version>b<build>.<revision> (see README.md)
 on:
   schedule:
     - cron: '0 3 * * *'
@@ -17,7 +17,7 @@ on:
         default: false
   push:
     branches: [mobile-runtime]
-    paths: [build.sh, openjdk-mobile.patch, jvm_launcher.c, smoke/**, .github/workflows/build.yml]
+    paths: [build.sh, openjdk-mobile.patch, inprocess.patch, jvm_launcher.c, smoke/**, .github/workflows/build.yml]
 
 permissions:
   contents: write
@@ -55,7 +55,7 @@ jobs:
           jdkBuild=${jdkTag##*+}
 
           # A release per GA and recipe (the patch, the script, the launcher)
-          recipe=$(git rev-parse HEAD:openjdk-mobile.patch HEAD:build.sh HEAD:jvm_launcher.c | git hash-object --stdin | cut -c1-12)
+          recipe=$(git rev-parse HEAD:openjdk-mobile.patch HEAD:inprocess.patch HEAD:build.sh HEAD:jvm_launcher.c | git hash-object --stdin | cut -c1-12)
           key="$ga ($commit), recipe $recipe"
           releases=$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate --jq '.[] | [.tag_name, .body] | @tsv')
           if [ "$FORCE" != "true" ] && echo "$releases" | grep -qF "$key"; then
