@@ -1,3 +1,62 @@
+diff --git a/make/autoconf/basic.m4 b/make/autoconf/basic.m4
+index 1591df46a91..95256209508 100644
+--- a/make/autoconf/basic.m4
++++ b/make/autoconf/basic.m4
+@@ -370,7 +370,8 @@ AC_DEFUN_ONCE([BASIC_SETUP_DEVKIT],
+       [UTIL_PREPEND_TO_PATH([EXTRA_PATH],$with_extra_path)]
+   )
+ 
+-  if test "x$OPENJDK_BUILD_OS" = "xmacosx"; then
++  # An Android target built on macOS has the NDK's sysroot, not an Xcode one
++  if test "x$OPENJDK_BUILD_OS" = "xmacosx" && test "x$OPENJDK_TARGET_OS" != "xandroid"; then
+     BASIC_SETUP_XCODE_SYSROOT
+   fi
+ 
+diff --git a/make/autoconf/flags-cflags.m4 b/make/autoconf/flags-cflags.m4
+index c246b9cab8a..33c59d08e90 100644
+--- a/make/autoconf/flags-cflags.m4
++++ b/make/autoconf/flags-cflags.m4
+@@ -476,8 +476,9 @@ AC_DEFUN([FLAGS_SETUP_CFLAGS_HELPER],
+   elif test "x$OPENJDK_TARGET_OS" = xwindows; then
+     CFLAGS_OS_DEF_JVM="-D_WINDOWS -DWIN32 -D_JNI_IMPLEMENTATION_"
+   elif test "x$OPENJDK_TARGET_OS" = xandroid; then
+-    CFLAGS_OS_DEF_JVM="-target aarch64-linux-android32 -DLINUX -D_ALLBSD_SOURCE -DANDROID"
+-    CFLAGS_OS_DEF_JDK="-target aarch64-linux-android32 -DLINUX -D__USE_BSD"
++    # The API level comes with the compiler (the NDK's aarch64-linux-android<api>-clang)
++    CFLAGS_OS_DEF_JVM="-DLINUX -D_ALLBSD_SOURCE -DANDROID"
++    CFLAGS_OS_DEF_JDK="-DLINUX -D__USE_BSD -D_GNU_SOURCE"
+   elif test "x$OPENJDK_TARGET_OS" = xios; then
+     CFLAGS_OS_DEF_JVM="-D_ALLBSD_SOURCE -D__IOS__ -D_XOPEN_SOURCE"
+     CFLAGS_OS_DEF_JDK="-D_ALLBSD_SOURCE -D__IOS__"
+diff --git a/make/autoconf/jdk-options.m4 b/make/autoconf/jdk-options.m4
+index 465e06ab39d..9523a372da5 100644
+--- a/make/autoconf/jdk-options.m4
++++ b/make/autoconf/jdk-options.m4
+@@ -193,7 +193,7 @@ AC_DEFUN_ONCE([JDKOPT_SETUP_JDK_OPTIONS],
+   if HOTSPOT_CHECK_JVM_VARIANT(zero); then
+     INCLUDE_SA=false
+   fi
+-  if test "x$OPENJDK_TARGET_OS" = xaix ; then
++  if test "x$OPENJDK_TARGET_OS" = xaix || test "x$OPENJDK_TARGET_OS" = xandroid ; then
+     INCLUDE_SA=false
+   fi
+   if test "x$OPENJDK_TARGET_CPU" = xs390x ; then
+diff --git a/make/modules/java.base/gensrc/GensrcMisc.gmk b/make/modules/java.base/gensrc/GensrcMisc.gmk
+index edb5e8bc58e..2f0ed6dc92f 100644
+--- a/make/modules/java.base/gensrc/GensrcMisc.gmk
++++ b/make/modules/java.base/gensrc/GensrcMisc.gmk
+@@ -66,7 +66,10 @@ else
+ endif
+ 
+ # Normalize OPENJDK_TARGET_OS operating system name to match jdk.internal.util.OperatingSystem enum
+-ifeq ($(OPENJDK_TARGET_OS), macosx)
++ifeq ($(OPENJDK_TARGET_OS), android)
++  # Android's Java code is Linux's (java.base is built from the Linux sources)
++  OPENJDK_TARGET_OS_CANONICAL := linux
++else ifeq ($(OPENJDK_TARGET_OS), macosx)
+   OPENJDK_TARGET_OS_CANONICAL = macos
+ else
+   OPENJDK_TARGET_OS_CANONICAL := $(OPENJDK_TARGET_OS)
 diff --git a/src/hotspot/os/bsd/os_bsd.cpp b/src/hotspot/os/bsd/os_bsd.cpp
 index 9e7620df657..8d5f0bac157 100644
 --- a/src/hotspot/os/bsd/os_bsd.cpp
@@ -13,6 +72,27 @@ index 9e7620df657..8d5f0bac157 100644
    int prot = exec ? PROT_READ|PROT_WRITE|PROT_EXEC : PROT_READ|PROT_WRITE;
  #if defined(__OpenBSD__)
    // XXX: Work-around mmap/MAP_FIXED bug temporarily on OpenBSD
+diff --git a/src/hotspot/os/linux/os_linux.cpp b/src/hotspot/os/linux/os_linux.cpp
+index 2e1e8a48efa..dc25c798f1a 100644
+--- a/src/hotspot/os/linux/os_linux.cpp
++++ b/src/hotspot/os/linux/os_linux.cpp
+@@ -675,6 +675,16 @@ void os::init_system_properties_values() {
+     }
+     Arguments::set_dll_dir(buf);
+ 
++#ifdef __BIONIC__
++    // A JVM linked into an Android app's executable: its natives are beside the executable (the APK's native
++    // libraries), its classes and data where the app put them, given as JAVA_HOME
++    const char* app_java_home = ::getenv("JAVA_HOME");
++    if (app_java_home != nullptr && app_java_home[0] != '\0' && strlen(app_java_home) < bufsize) {
++      strcpy(buf, app_java_home);
++      pslash = nullptr;
++    }
++#endif
++
+     // Get rid of /lib, if binary is libjvm.so,
+     // or cut off /bin, if it is a statically linked binary.
+ #ifndef __BIONIC__
 diff --git a/src/hotspot/os_cpu/bsd_zero/os_bsd_zero.cpp b/src/hotspot/os_cpu/bsd_zero/os_bsd_zero.cpp
 index 94d3260c484..4a80753f579 100644
 --- a/src/hotspot/os_cpu/bsd_zero/os_bsd_zero.cpp
@@ -48,3 +128,38 @@ index 94d3260c484..4a80753f579 100644
  #endif
  
  void os::setup_fpu() {}
+diff --git a/src/hotspot/share/utilities/compilerWarnings.hpp b/src/hotspot/share/utilities/compilerWarnings.hpp
+index 3a2a94164a1..0bb238c39a5 100644
+--- a/src/hotspot/share/utilities/compilerWarnings.hpp
++++ b/src/hotspot/share/utilities/compilerWarnings.hpp
+@@ -127,8 +127,12 @@
+   }
+ 
+ // Both Linux and AIX C libraries declare functions noexcept.
+-// Neither BSD nor Windows C libraries declare functions noexcept.
++// Neither BSD nor Windows C libraries declare functions noexcept, nor Android's bionic.
++#ifdef __ANDROID__
++#define FORBIDDEN_FUNCTION_COND_NOEXCEPT_noexcept
++#else
+ #define FORBIDDEN_FUNCTION_COND_NOEXCEPT_noexcept NOT_WINDOWS(NOT_BSD(noexcept))
++#endif
+ #define FORBIDDEN_FUNCTION_COND_NOEXCEPT_
+ 
+ #ifndef FORBIDDEN_FUNCTION_IMPORT_SPEC
+diff --git a/src/java.base/unix/native/libjava/jni_util_md.c b/src/java.base/unix/native/libjava/jni_util_md.c
+index 7195b3defdf..5630d60488c 100644
+--- a/src/java.base/unix/native/libjava/jni_util_md.c
++++ b/src/java.base/unix/native/libjava/jni_util_md.c
+@@ -31,7 +31,11 @@
+ #include "jni_util.h"
+ #include "dlfcn.h"
+ 
+-#if defined(LINUX) && (defined(_GNU_SOURCE) || \
++#if defined(__ANDROID__)
++/* Bionic's XSI strerror_r is exported as strerror_r itself (the GNU one is __gnu_strerror_r) */
++extern int xsi_strerror_r(int, char *, size_t) __asm__("strerror_r");
++#define strerror_r(a, b, c) xsi_strerror_r((a), (b), (c))
++#elif defined(LINUX) && (defined(_GNU_SOURCE) || \
+          (defined(_POSIX_C_SOURCE) && _POSIX_C_SOURCE < 200112L \
+              && defined(_XOPEN_SOURCE) && _XOPEN_SOURCE < 600))
+ extern int __xpg_strerror_r(int, char *, size_t);

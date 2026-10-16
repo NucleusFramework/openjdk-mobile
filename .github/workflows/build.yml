@@ -1,7 +1,7 @@
 name: Build
 
 # Follows openjdk/mobile: every day, and when the recipe changes, if upstream's head and this recipe have no release yet,
-# builds the iOS runtimes from it with openjdk-mobile.patch and publishes them, in the same run, as
+# builds the iOS and Android runtimes from it with openjdk-mobile.patch and publishes them, in the same run, as
 # jdk-mobile-<version>b<build>.<revision> (see README.md)
 on:
   schedule:
@@ -17,7 +17,7 @@ on:
         default: false
   push:
     branches: [mobile-runtime]
-    paths: [build.sh, openjdk-mobile.patch, .github/workflows/build.yml]
+    paths: [build.sh, openjdk-mobile.patch, jvm_launcher.c, .github/workflows/build.yml]
 
 permissions:
   contents: write
@@ -55,8 +55,9 @@ jobs:
           jdkBuild=${jdkTag##*+}
           cd ..
 
-          # A release per upstream commit and recipe (the patch and the script)
-          key="upstream $sha, recipe $(git rev-parse HEAD:openjdk-mobile.patch | cut -c1-12)-$(git rev-parse HEAD:build.sh | cut -c1-12)"
+          # A release per upstream commit and recipe (the patch, the script, the launcher)
+          recipe=$(git rev-parse HEAD:openjdk-mobile.patch HEAD:build.sh HEAD:jvm_launcher.c | git hash-object --stdin | cut -c1-12)
+          key="upstream $sha, recipe $recipe"
           releases=$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate --jq '.[] | [.tag_name, .body] | @tsv')
           if [ "$FORCE" != "true" ] && echo "$releases" | grep -qF "$key"; then
             echo "Already released: $key"
@@ -80,7 +81,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [ios-simulator, ios-device]
+        target: [ios-simulator, ios-device, android]
     runs-on: macos-15
     timeout-minutes: 240
     steps:
@@ -96,7 +97,12 @@ jobs:
         with:
           distribution: temurin
           java-version: '26'
-      - run: brew install autoconf
+      - run: brew install autoconf fontconfig
+      - name: Android NDK
+        if: matrix.target == 'android'
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;27.2.12479018" > /dev/null
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
       - name: Build
         env:
           SUFFIX: ${{ needs.version.outputs.suffix }}
@@ -125,4 +131,4 @@ jobs:
           KEY: ${{ needs.version.outputs.key }}
         run: |
           gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "$TAG" \
-            --notes "OpenJDK's mobile port for iOS (Zero), built from openjdk/mobile with this branch's patch: $KEY."
+            --notes "OpenJDK's mobile port for iOS (Zero) and Android (server VM), built from openjdk/mobile with this branch's patch: $KEY."
