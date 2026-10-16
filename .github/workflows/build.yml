@@ -1,7 +1,8 @@
 name: Build
 
-# Follows openjdk/mobile: every day, if its head (or this recipe) has no release yet, builds the iOS runtimes from it
-# with openjdk-mobile.patch and publishes them as jdk-mobile-<version>b<build>.<revision> (see README.md)
+# Follows openjdk/mobile: every day, and when the recipe changes, if upstream's head and this recipe have no release yet,
+# builds the iOS runtimes from it with openjdk-mobile.patch and publishes them, in the same run, as
+# jdk-mobile-<version>b<build>.<revision> (see README.md)
 on:
   schedule:
     - cron: '0 3 * * *'
@@ -111,7 +112,6 @@ jobs:
 
   release:
     needs: [version, build]
-    if: github.event_name != 'push'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4

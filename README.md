@@ -10,8 +10,9 @@ only; the sources are upstream's.
   - `os_bsd.cpp`: the code cache is committed read-write on iOS, which refuses executable pages without the JIT
     entitlement; Zero never executes them.
 - `build.sh`: builds a target from an openjdk/mobile checkout and packages it.
-- `.github/workflows/build.yml`: every day, builds upstream's head if it (or the recipe) has no release yet, and
-  publishes it. It fails, and GitHub says so, when the patch no longer applies.
+- `.github/workflows/build.yml`: every day, and on each change to the recipe, builds upstream's head if it and the
+  recipe have no release yet, and publishes it in the same run. It fails, and GitHub says so, when the patch no longer
+  applies.
 
 ## Releases
 
