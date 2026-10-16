@@ -1,10 +1,13 @@
 # jdk-mobile
 
-OpenJDK's mobile port ([openjdk/mobile](https://github.com/openjdk/mobile)) built as a Java runtime an app embeds, for
-iOS (Zero, the interpreter: iOS forbids generated code) and Android (the server VM, with its JIT). This branch holds
-the recipe only; the sources are upstream's.
+A stable OpenJDK (27, from [openjdk/jdk27u](https://github.com/openjdk/jdk27u)'s GA releases) with
+[openjdk/mobile](https://github.com/openjdk/mobile)'s port, built as a Java runtime an app embeds, for iOS (Zero, the
+interpreter: iOS forbids generated code) and Android (the server VM, with its JIT). openjdk/mobile follows the JDK's
+mainline (an early access); this branch holds the recipe that brings its port to the stable line, the sources being
+OpenJDK's.
 
-- `openjdk-mobile.patch`, the fixes:
+- `openjdk-mobile.patch`: openjdk/mobile's changes over the mainline it merged (the iOS and Android ports), ported to
+  27, and these fixes:
   - iOS: `os_bsd_zero.cpp` (the W^X state the shared code needs on Apple aarch64 is only defined for the C1/C2 port: Zero
     gets its own, without page protection switches), `os_bsd.cpp` (the code cache is committed read-write: iOS refuses
     executable pages without the JIT entitlement, and Zero never executes them);
@@ -12,16 +15,17 @@ the recipe only; the sources are upstream's.
     defines forced on, `_GNU_SOURCE`), bionic's C library (`compilerWarnings.hpp`: no `noexcept`; `jni_util_md.c`: its
     XSI `strerror_r`), `java.home` from `JAVA_HOME` (`os_linux.cpp`: the natives are linked into the launcher), Linux
     as the Java code's OS (`GensrcMisc.gmk`), no serviceability agent (`jdk-options.m4`).
-- `build.sh`: builds a target from an openjdk/mobile checkout and packages it; `jvm_launcher.c`: Android's launcher.
-- `.github/workflows/build.yml`: every day, and on each change to the recipe, builds upstream's head if it and the
-  recipe have no release yet, and publishes it in the same run. It fails, and GitHub says so, when the patch no longer
-  applies.
+- `build.sh`: builds a target from an OpenJDK 27 checkout and packages it; `jvm_launcher.c`: Android's launcher.
+- `.github/workflows/build.yml`: every day, and on each change to the recipe, builds the line's latest GA if it and
+  the recipe have no release yet, and publishes it in the same run. It fails, and GitHub says so, when the patch no
+  longer applies (an update that touches the same code): the port is then redone on it. Moving to the next line (28,
+  29...) is porting the patch to it and changing `JDK_LINE`.
 
 ## Releases
 
-Named like the JBR's: `jdk-mobile-<version>b<build>.<revision>`, for example `jdk-mobile-28b9.1`: JDK 28, upstream at
-the JDK's build 9 (`jdk-28+9`), the first release on it (the revision counts the releases on the same JDK build: a newer
-upstream commit, a recipe change). Each release's notes give the upstream commit and the recipe it was built from.
+Named like the JBR's: `jdk-mobile-<version>b<build>.<revision>`, for example `jdk-mobile-27b35.1`: JDK 27, its GA
+(`jdk-27-ga`, the JDK's build `jdk-27+35`), the first release on it (the revision counts the releases on the same GA: a
+recipe change). Each release's notes give the GA, its commit and the recipe it was built from.
 
 | Asset | Contents |
 |---|---|
@@ -61,9 +65,9 @@ Everything the VM prints goes to standard error; standard output is the program'
 ## Building
 
 ```bash
-git clone https://github.com/openjdk/mobile.git jdk
+git clone --depth 1 --branch jdk-27-ga https://github.com/openjdk/jdk27u.git jdk
 ./build.sh ios-simulator jdk   # or ios-device, android → dist/jdk-mobile-<target>.tar.gz
 ```
 
-Needs autoconf and a boot JDK 26+ (`BOOT_JDK`); Xcode for iOS; the NDK (`ANDROID_NDK_HOME`) and fontconfig's headers for
+Needs autoconf and a boot JDK 26 or 27 (`BOOT_JDK`); Xcode for iOS; the NDK (`ANDROID_NDK_HOME`) and fontconfig's headers for
 Android.

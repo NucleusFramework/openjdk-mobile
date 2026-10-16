@@ -1,8 +1,8 @@
 diff --git a/make/autoconf/basic.m4 b/make/autoconf/basic.m4
-index 1591df46a91..95256209508 100644
+index bb6908d91..f7bbbca74 100644
 --- a/make/autoconf/basic.m4
 +++ b/make/autoconf/basic.m4
-@@ -370,7 +370,8 @@ AC_DEFUN_ONCE([BASIC_SETUP_DEVKIT],
+@@ -378,7 +378,8 @@ AC_DEFUN_ONCE([BASIC_SETUP_DEVKIT],
        [UTIL_PREPEND_TO_PATH([EXTRA_PATH],$with_extra_path)]
    )
  
@@ -13,23 +13,65 @@ index 1591df46a91..95256209508 100644
    fi
  
 diff --git a/make/autoconf/flags-cflags.m4 b/make/autoconf/flags-cflags.m4
-index c246b9cab8a..33c59d08e90 100644
+index 423654cd5..33c59d08e 100644
 --- a/make/autoconf/flags-cflags.m4
 +++ b/make/autoconf/flags-cflags.m4
-@@ -476,8 +476,9 @@ AC_DEFUN([FLAGS_SETUP_CFLAGS_HELPER],
+@@ -83,7 +83,7 @@ AC_DEFUN([FLAGS_SETUP_DEBUG_SYMBOLS],
+     ])
+ 
+   # Debug symbols
+-  if test "x$TOOLCHAIN_TYPE" = xgcc; then
++  if test "x$TOOLCHAIN_TYPE" = xgcc || test "x$OPENJDK_TARGET_OS" = xandroid; then
+     if test "x$ALLOW_ABSOLUTE_PATHS_IN_OUTPUT" = "xfalse"; then
+       # Check if compiler supports -fdebug-prefix-map. If so, use that to make
+       # the debug symbol paths resolve to paths relative to the workspace root.
+@@ -475,6 +475,13 @@ AC_DEFUN([FLAGS_SETUP_CFLAGS_HELPER],
+     CFLAGS_OS_DEF_JDK="-D_ALLBSD_SOURCE"
    elif test "x$OPENJDK_TARGET_OS" = xwindows; then
      CFLAGS_OS_DEF_JVM="-D_WINDOWS -DWIN32 -D_JNI_IMPLEMENTATION_"
-   elif test "x$OPENJDK_TARGET_OS" = xandroid; then
--    CFLAGS_OS_DEF_JVM="-target aarch64-linux-android32 -DLINUX -D_ALLBSD_SOURCE -DANDROID"
--    CFLAGS_OS_DEF_JDK="-target aarch64-linux-android32 -DLINUX -D__USE_BSD"
++  elif test "x$OPENJDK_TARGET_OS" = xandroid; then
 +    # The API level comes with the compiler (the NDK's aarch64-linux-android<api>-clang)
 +    CFLAGS_OS_DEF_JVM="-DLINUX -D_ALLBSD_SOURCE -DANDROID"
 +    CFLAGS_OS_DEF_JDK="-DLINUX -D__USE_BSD -D_GNU_SOURCE"
-   elif test "x$OPENJDK_TARGET_OS" = xios; then
-     CFLAGS_OS_DEF_JVM="-D_ALLBSD_SOURCE -D__IOS__ -D_XOPEN_SOURCE"
-     CFLAGS_OS_DEF_JDK="-D_ALLBSD_SOURCE -D__IOS__"
++  elif test "x$OPENJDK_TARGET_OS" = xios; then
++    CFLAGS_OS_DEF_JVM="-D_ALLBSD_SOURCE -D__IOS__ -D_XOPEN_SOURCE"
++    CFLAGS_OS_DEF_JDK="-D_ALLBSD_SOURCE -D__IOS__"
+   fi
+ 
+   CFLAGS_OS_DEF_JDK="$CFLAGS_OS_DEF_JDK -D$OPENJDK_TARGET_OS_UPPERCASE"
+diff --git a/make/autoconf/flags-other.m4 b/make/autoconf/flags-other.m4
+index 4570f6ede..82f1c4a46 100644
+--- a/make/autoconf/flags-other.m4
++++ b/make/autoconf/flags-other.m4
+@@ -193,6 +193,9 @@ AC_DEFUN([FLAGS_SETUP_ASFLAGS],
+             -DMAC_OS_X_VERSION_MAX_ALLOWED=$MACOSX_VERSION_MAX_NODOTS"
+     fi
+   fi
++  if test "x$OPENJDK_TARGET_OS" = xandroid; then
++    JVM_BASIC_ASFLAGS="-target aarch64-linux-android"
++  fi
+ ])
+ 
+ ################################################################################
+diff --git a/make/autoconf/hotspot.m4 b/make/autoconf/hotspot.m4
+index 3adb1333f..6101151e1 100644
+--- a/make/autoconf/hotspot.m4
++++ b/make/autoconf/hotspot.m4
+@@ -54,7 +54,11 @@ AC_DEFUN_ONCE([HOTSPOT_SETUP_JVM_VARIANTS],
+       zero custom) @<:@server@:>@])])
+ 
+   if test "x$with_jvm_variants" = x; then
+-    with_jvm_variants="server"
++    if test "x$OPENJDK_TARGET_OS" = xios; then
++      with_jvm_variants="zero"
++    else
++      with_jvm_variants="server"
++    fi
+   fi
+   JVM_VARIANTS_OPT="$with_jvm_variants"
+ 
 diff --git a/make/autoconf/jdk-options.m4 b/make/autoconf/jdk-options.m4
-index 465e06ab39d..9523a372da5 100644
+index 465e06ab3..9523a372d 100644
 --- a/make/autoconf/jdk-options.m4
 +++ b/make/autoconf/jdk-options.m4
 @@ -193,7 +193,7 @@ AC_DEFUN_ONCE([JDKOPT_SETUP_JDK_OPTIONS],
@@ -41,8 +83,171 @@ index 465e06ab39d..9523a372da5 100644
      INCLUDE_SA=false
    fi
    if test "x$OPENJDK_TARGET_CPU" = xs390x ; then
+diff --git a/make/autoconf/lib-freetype.m4 b/make/autoconf/lib-freetype.m4
+index 8d524c8c8..7626cebd9 100644
+--- a/make/autoconf/lib-freetype.m4
++++ b/make/autoconf/lib-freetype.m4
+@@ -105,6 +105,8 @@ AC_DEFUN_ONCE([LIB_SETUP_FREETYPE],
+   FREETYPE_TO_USE=bundled
+   if test "x$OPENJDK_TARGET_OS" != "xwindows" && \
+       test "x$OPENJDK_TARGET_OS" != "xmacosx" && \
++      test "x$OPENJDK_TARGET_OS" != "xandroid" && \
++      test "x$OPENJDK_TARGET_OS" != "xios" && \
+       test "x$OPENJDK_TARGET_OS" != "xaix"; then
+     FREETYPE_TO_USE=system
+   fi
+diff --git a/make/autoconf/libraries.m4 b/make/autoconf/libraries.m4
+index 5daacdc1c..1a79a9268 100644
+--- a/make/autoconf/libraries.m4
++++ b/make/autoconf/libraries.m4
+@@ -44,6 +44,8 @@ AC_DEFUN_ONCE([LIB_DETERMINE_DEPENDENCIES],
+   # Check if X11 is needed
+   if test "x$OPENJDK_TARGET_OS" = xwindows ||
+      test "x$OPENJDK_TARGET_OS" = xmacosx ||
++     test "x$OPENJDK_TARGET_OS" = xandroid ||
++     test "x$OPENJDK_TARGET_OS" = xios ||
+      test "x$ENABLE_HEADLESS_ONLY" = xtrue; then
+     NEEDS_LIB_X11=false
+   else
+@@ -52,7 +54,7 @@ AC_DEFUN_ONCE([LIB_DETERMINE_DEPENDENCIES],
+   fi
+ 
+   # Check if fontconfig is needed
+-  if test "x$OPENJDK_TARGET_OS" = xwindows || test "x$OPENJDK_TARGET_OS" = xmacosx; then
++  if test "x$OPENJDK_TARGET_OS" = xwindows || test "x$OPENJDK_TARGET_OS" = xmacosx || test "x$OPENJDK_TARGET_OS" = xios; then
+     # No fontconfig support on windows or macosx
+     NEEDS_LIB_FONTCONFIG=false
+   else
+diff --git a/make/autoconf/platform.m4 b/make/autoconf/platform.m4
+index 90d5d7956..784e40bc6 100644
+--- a/make/autoconf/platform.m4
++++ b/make/autoconf/platform.m4
+@@ -198,6 +198,14 @@ AC_DEFUN([PLATFORM_EXTRACT_VARS_FROM_CPU],
+ AC_DEFUN([PLATFORM_EXTRACT_VARS_FROM_OS],
+ [
+   case "$1" in
++    *android*)
++      VAR_OS=android
++      VAR_OS_TYPE=unix
++      ;;
++    *ios*)
++      VAR_OS=ios
++      VAR_OS_TYPE=unix
++      ;;
+     *linux*)
+       VAR_OS=linux
+       VAR_OS_TYPE=unix
+@@ -534,6 +542,12 @@ AC_DEFUN([PLATFORM_SETUP_LEGACY_VARS_HELPER],
+   if test "x$OPENJDK_$1_OS" = xmacosx; then
+     HOTSPOT_$1_OS=bsd
+   fi
++  if test "x$OPENJDK_$1_OS" = xios; then
++    HOTSPOT_$1_OS=bsd
++  fi
++  if test "x$OPENJDK_$1_OS" = xandroid; then
++    HOTSPOT_$1_OS=linux
++  fi
+   AC_SUBST(HOTSPOT_$1_OS)
+ 
+   HOTSPOT_$1_OS_TYPE=${OPENJDK_$1_OS_TYPE}
+diff --git a/make/autoconf/toolchain.m4 b/make/autoconf/toolchain.m4
+index 8a08e86d5..3eadb3922 100644
+--- a/make/autoconf/toolchain.m4
++++ b/make/autoconf/toolchain.m4
+@@ -881,11 +881,13 @@ AC_DEFUN_ONCE([TOOLCHAIN_SETUP_BUILD_COMPILERS],
+ 
+     PATH="$OLDPATH"
+ 
+-    TOOLCHAIN_EXTRACT_COMPILER_VERSION(BUILD_CC, [BuildC])
+-    TOOLCHAIN_EXTRACT_COMPILER_VERSION(BUILD_CXX, [BuildC++])
+-    TOOLCHAIN_PREPARE_FOR_VERSION_COMPARISONS([BUILD_], [OPENJDK_BUILD_], [build ])
+-    TOOLCHAIN_EXTRACT_LD_VERSION(BUILD_LD, [build linker])
+-    TOOLCHAIN_PREPARE_FOR_LD_VERSION_COMPARISONS([BUILD_], [OPENJDK_BUILD_])
++    if test "x$OPENJDK_TARGET_OS" != "xandroid"; then
++      TOOLCHAIN_EXTRACT_COMPILER_VERSION(BUILD_CC, [BuildC])
++      TOOLCHAIN_EXTRACT_COMPILER_VERSION(BUILD_CXX, [BuildC++])
++      TOOLCHAIN_PREPARE_FOR_VERSION_COMPARISONS([BUILD_], [OPENJDK_BUILD_], [build ])
++      TOOLCHAIN_EXTRACT_LD_VERSION(BUILD_LD, [build linker])
++      TOOLCHAIN_PREPARE_FOR_LD_VERSION_COMPARISONS([BUILD_], [OPENJDK_BUILD_])
++    fi
+   else
+     # If we are not cross compiling, use the normal target compilers for
+     # building the build platform executables.
+diff --git a/make/common/JdkNativeCompilation.gmk b/make/common/JdkNativeCompilation.gmk
+index 29001e09b..2b025b630 100644
+--- a/make/common/JdkNativeCompilation.gmk
++++ b/make/common/JdkNativeCompilation.gmk
+@@ -77,6 +77,18 @@ FindSrcDirsForComponent += \
+       $(TOPDIR)/src/$(strip $1)/$(OPENJDK_TARGET_OS_TYPE)/native/$(strip $2) \
+       $(TOPDIR)/src/$(strip $1)/share/native/$(strip $2)))
+ 
++ifeq ($(OPENJDK_TARGET_OS), android)
++    FindSrcDirsForComponent += \
++        $(call uniq, $(wildcard \
++            $(TOPDIR)/src/$(strip $1)/linux/native/$(strip $2)))
++endif
++
++ifeq ($(OPENJDK_TARGET_OS), ios)
++    FindSrcDirsForComponent += \
++        $(call uniq, $(wildcard \
++            $(TOPDIR)/src/$(strip $1)/macosx/native/$(strip $2)))
++endif
++
+ # Find a library. Used for declaring dependencies on libraries in different
+ # modules.
+ # Param 1 - module name
+diff --git a/make/common/Modules.gmk b/make/common/Modules.gmk
+index 1ec7bef6f..d153601dd 100644
+--- a/make/common/Modules.gmk
++++ b/make/common/Modules.gmk
+@@ -76,6 +76,13 @@ SRC_SUBDIRS += $(OPENJDK_TARGET_OS)/classes
+ ifneq ($(OPENJDK_TARGET_OS), $(OPENJDK_TARGET_OS_TYPE))
+   SRC_SUBDIRS += $(OPENJDK_TARGET_OS_TYPE)/classes
+ endif
++ifeq ($(OPENJDK_TARGET_OS), android)
++  SRC_SUBDIRS += linux/classes
++endif
++ifeq ($(OPENJDK_TARGET_OS), ios)
++  SRC_SUBDIRS += macosx/classes
++endif
++
+ SRC_SUBDIRS += share/classes
+ 
+ SPEC_SUBDIRS += share/specs
+diff --git a/make/common/native/Paths.gmk b/make/common/native/Paths.gmk
+index bdb8828eb..b8c9cd8a9 100644
+--- a/make/common/native/Paths.gmk
++++ b/make/common/native/Paths.gmk
+@@ -216,7 +216,7 @@ define SetupObjectFileList
+ 
+     # If we are building static library, 'AR' on macosx/aix may not support @-file.
+     ifeq ($$($1_TYPE), STATIC_LIBRARY)
+-      ifeq ($(call isTargetOs, macosx aix), true)
++      ifeq ($(call isTargetOs, macosx ios aix), true)
+         $1_LD_OBJ_ARG := `cat $$($1_OBJ_FILE_LIST)`
+       endif
+     endif
+diff --git a/make/hotspot/lib/JvmFlags.gmk b/make/hotspot/lib/JvmFlags.gmk
+index 121f71bfa..08b9be98c 100644
+--- a/make/hotspot/lib/JvmFlags.gmk
++++ b/make/hotspot/lib/JvmFlags.gmk
+@@ -57,6 +57,14 @@ JVM_CFLAGS_INCLUDES += \
+     -I$(TOPDIR)/src/java.base/share/native/libjimage \
+     #
+ 
++ifeq ($(call isTargetOs, android ios), true)
++  JVM_CFLAGS_INCLUDES += \
++    -I$(TOPDIR)/src/hotspot/os_cpu/linux_aarch64 \
++    -I$(TOPDIR)/src/hotspot/os/linux \
++    -I$(TOPDIR)/src/hotspot/os/bsd \
++    #
++endif
++
+ # INCLUDE_SUFFIX_* is only meant for including the proper
+ # platform files. Don't use it to guard code. Use the value of
+ # HOTSPOT_TARGET_CPU_DEFINE etc. instead.
 diff --git a/make/modules/java.base/gensrc/GensrcMisc.gmk b/make/modules/java.base/gensrc/GensrcMisc.gmk
-index edb5e8bc58e..2f0ed6dc92f 100644
+index edb5e8bc5..2f0ed6dc9 100644
 --- a/make/modules/java.base/gensrc/GensrcMisc.gmk
 +++ b/make/modules/java.base/gensrc/GensrcMisc.gmk
 @@ -66,7 +66,10 @@ else
@@ -57,11 +262,122 @@ index edb5e8bc58e..2f0ed6dc92f 100644
    OPENJDK_TARGET_OS_CANONICAL = macos
  else
    OPENJDK_TARGET_OS_CANONICAL := $(OPENJDK_TARGET_OS)
+diff --git a/make/modules/java.desktop/Gensrc.gmk b/make/modules/java.desktop/Gensrc.gmk
+index ceeade7a9..5e896330d 100644
+--- a/make/modules/java.desktop/Gensrc.gmk
++++ b/make/modules/java.desktop/Gensrc.gmk
+@@ -31,7 +31,7 @@ ifeq ($(call isTargetOs, windows), false)
+   include gensrc/GensrcIcons.gmk
+ endif
+ 
+-ifeq ($(call isTargetOs, linux aix), true)
++ifeq ($(call isTargetOs, linux aix android), true)
+   include gensrc/GensrcX11Wrappers.gmk
+ endif
+ 
+diff --git a/make/modules/java.desktop/Java.gmk b/make/modules/java.desktop/Java.gmk
+index bab6186fb..5e5a4f01c 100644
+--- a/make/modules/java.desktop/Java.gmk
++++ b/make/modules/java.desktop/Java.gmk
+@@ -46,7 +46,7 @@ EXCLUDE_FILES += \
+     .template \
+     #
+ 
+-ifeq ($(call isTargetOs, macosx), true)
++ifeq ($(call isTargetOs, macosx android ios), true)
+   # exclude all X11 on Mac.
+   EXCLUDES += \
+       sun/awt/screencast \
+diff --git a/make/modules/java.desktop/Lib.gmk b/make/modules/java.desktop/Lib.gmk
+index 830e0553c..df1154277 100644
+--- a/make/modules/java.desktop/Lib.gmk
++++ b/make/modules/java.desktop/Lib.gmk
+@@ -34,10 +34,12 @@ $(call FillFindCache, $(wildcard $(TOPDIR)/src/java.desktop/*/native))
+ ################################################################################
+ # Create the AWT/2D libraries
+ 
+-include lib/AwtLibraries.gmk
+-include lib/ClientLibraries.gmk
++ifeq ($(call isTargetOs, android ios), false)
++  include lib/AwtLibraries.gmk
++  include lib/ClientLibraries.gmk
++endif
+ 
+-ifeq ($(call isTargetOs, aix), false)
++ifeq ($(call isTargetOs, aix android ios), false)
+   ##############################################################################
+   # Build libjsound
+   ##############################################################################
+diff --git a/make/modules/java.prefs/Lib.gmk b/make/modules/java.prefs/Lib.gmk
+index 7590a5431..8dc9f2297 100644
+--- a/make/modules/java.prefs/Lib.gmk
++++ b/make/modules/java.prefs/Lib.gmk
+@@ -31,8 +31,8 @@ include LibCommon.gmk
+ ## Build libprefs
+ ################################################################################
+ 
+-# libprefs on macosx does not use the unix code
+-ifeq ($(call isTargetOs, macosx), true)
++# libprefs on macosx or ios does not use the unix code
++ifeq ($(call isTargetOs, macosx ios), true)
+   LIBPREFS_EXCLUDE_SRC_PATTERNS := /unix/
+ endif
+ 
+diff --git a/src/hotspot/os/bsd/memMapPrinter_macosx.cpp b/src/hotspot/os/bsd/memMapPrinter_macosx.cpp
+index 30e258c9d..34fa85242 100644
+--- a/src/hotspot/os/bsd/memMapPrinter_macosx.cpp
++++ b/src/hotspot/os/bsd/memMapPrinter_macosx.cpp
+@@ -23,7 +23,7 @@
+  *
+  */
+ 
+-#if defined(__APPLE__)
++#if (defined(__APPLE__) && !defined(__IOS__))
+ 
+ #include "cppstdlib/cstdlib.hpp"
+ #include "nmt/memMapPrinter.hpp"
 diff --git a/src/hotspot/os/bsd/os_bsd.cpp b/src/hotspot/os/bsd/os_bsd.cpp
-index 9e7620df657..8d5f0bac157 100644
+index 2d1540ea6..8d5f0bac1 100644
 --- a/src/hotspot/os/bsd/os_bsd.cpp
 +++ b/src/hotspot/os/bsd/os_bsd.cpp
-@@ -1620,6 +1620,10 @@ static void warn_fail_commit_memory(char* addr, size_t size, bool exec,
+@@ -111,7 +111,9 @@
+ #endif
+ 
+ #ifdef __APPLE__
++#ifndef __IOS__
+   #include <libproc.h>
++#endif
+   #include <mach/task_info.h>
+   #include <mach-o/dyld.h>
+ 
+@@ -495,22 +497,26 @@ void os::init_system_properties_values() {
+     // Found the full path to libjvm.so.
+     // Now cut the path to <java_home>/jre if we can.
+     *(strrchr(buf, '/')) = '\0'; // Get rid of /libjvm.so.
++#ifndef __IOS__
+     pslash = strrchr(buf, '/');
+     if (pslash != nullptr) {
+       *pslash = '\0';            // Get rid of /{client|server|hotspot}.
+     }
++#endif
+     if (is_vm_statically_linked()) {
+       strcat(buf, "/lib");
+     }
+ 
+     Arguments::set_dll_dir(buf);
+ 
++#ifndef __IOS__
+     if (pslash != nullptr) {
+       pslash = strrchr(buf, '/');
+       if (pslash != nullptr) {
+         *pslash = '\0';          // Get rid of /lib.
+       }
+     }
++#endif
+     Arguments::set_java_home(buf);
+     if (!set_boot_path('/', ':')) {
+         vm_exit_during_initialization("Failed setting boot class path.", nullptr);
+@@ -1614,6 +1620,10 @@ static void warn_fail_commit_memory(char* addr, size_t size, bool exec,
  //       left at the time of mmap(). This could be a potential
  //       problem.
  bool os::pd_commit_memory(char* addr, size_t size, bool exec) {
@@ -72,11 +388,58 @@ index 9e7620df657..8d5f0bac157 100644
    int prot = exec ? PROT_READ|PROT_WRITE|PROT_EXEC : PROT_READ|PROT_WRITE;
  #if defined(__OpenBSD__)
    // XXX: Work-around mmap/MAP_FIXED bug temporarily on OpenBSD
+@@ -1807,7 +1817,11 @@ void os::remove_stack_guard_pages(char* addr, size_t size) {
+ static char* anon_mmap(char* requested_addr, size_t bytes, bool exec) {
+   // MAP_FIXED is intentionally left out, to leave existing mappings intact.
+   const int flags = MAP_PRIVATE | MAP_NORESERVE | MAP_ANONYMOUS
++#ifdef __IOS__
++      ;
++#else
+       MACOS_ONLY(| (exec ? MAP_JIT : 0));
++#endif
+ 
+   // Map reserved/uncommitted pages PROT_NONE so we fail early if we
+   // touch an uncommitted page. Otherwise, the read/write might
+@@ -2713,7 +2727,7 @@ bool os::pd_dll_unload(void* libhandle, char* ebuf, int ebuflen) {
+ } // end: os::pd_dll_unload()
+ 
+ void os::print_open_file_descriptors(outputStream* st) {
+-#ifdef __APPLE__
++#if defined(__APPLE__) && !defined(__IOS__)
+   char buf[1024 * sizeof(struct proc_fdinfo)];
+   os::Bsd::print_open_file_descriptors(st, buf, sizeof(buf));
+ #else
+@@ -2722,7 +2736,7 @@ void os::print_open_file_descriptors(outputStream* st) {
+ }
+ 
+ void os::Bsd::print_open_file_descriptors(outputStream* st, char* buf, size_t buflen) {
+-#ifdef __APPLE__
++#if defined(__APPLE__) && !defined(__IOS__)
+   pid_t my_pid;
+ 
+   // ensure the scratch buffer is big enough for at least one FD info struct
+diff --git a/src/hotspot/os/bsd/os_perf_bsd.cpp b/src/hotspot/os/bsd/os_perf_bsd.cpp
+index 47fe3a0d7..a13fa2987 100644
+--- a/src/hotspot/os/bsd/os_perf_bsd.cpp
++++ b/src/hotspot/os/bsd/os_perf_bsd.cpp
+@@ -21,6 +21,7 @@
+  * questions.
+  *
+  */
++#ifndef __IOS__
+ #include "memory/allocation.inline.hpp"
+ #include "memory/resourceArea.hpp"
+ #include "runtime/os.hpp"
+@@ -482,3 +483,4 @@ bool NetworkPerformanceInterface::initialize() {
+ int NetworkPerformanceInterface::network_utilization(NetworkInterface** network_interfaces) const {
+   return _impl->network_utilization(network_interfaces);
+ }
++#endif // IOS
 diff --git a/src/hotspot/os/linux/os_linux.cpp b/src/hotspot/os/linux/os_linux.cpp
-index 2e1e8a48efa..dc25c798f1a 100644
+index ba48f2b4e..8d8225efd 100644
 --- a/src/hotspot/os/linux/os_linux.cpp
 +++ b/src/hotspot/os/linux/os_linux.cpp
-@@ -675,6 +675,16 @@ void os::init_system_properties_values() {
+@@ -674,14 +674,26 @@ void os::init_system_properties_values() {
      }
      Arguments::set_dll_dir(buf);
  
@@ -92,12 +455,178 @@ index 2e1e8a48efa..dc25c798f1a 100644
 +
      // Get rid of /lib, if binary is libjvm.so,
      // or cut off /bin, if it is a statically linked binary.
- #ifndef __BIONIC__
++#ifndef __BIONIC__
+     if (pslash != nullptr) {
+       pslash = strrchr(buf, '/');
+       if (pslash != nullptr) {
+         *pslash = '\0';
+       }
+     }
++#endif
+     Arguments::set_java_home(buf);
+     if (!set_boot_path('/', ':')) {
+       vm_exit_during_initialization("Failed setting boot class path.", nullptr);
+@@ -729,16 +741,21 @@ void os::init_system_properties_values() {
+ 
+ void os::Linux::libpthread_init() {
+   // Save glibc and pthread version strings.
++#ifndef __BIONIC__
+ #if !defined(_CS_GNU_LIBC_VERSION) || \
+     !defined(_CS_GNU_LIBPTHREAD_VERSION)
+   #error "glibc too old (< 2.3.2)"
+ #endif
++#endif
+ 
+ #ifdef MUSL_LIBC
+   // confstr() from musl libc returns EINVAL for
+   // _CS_GNU_LIBC_VERSION and _CS_GNU_LIBPTHREAD_VERSION
+   os::Linux::set_libc_version("musl - unknown");
+   os::Linux::set_libpthread_version("musl - unknown");
++#elif defined(__BIONIC__)
++  os::Linux::set_libc_version("bionic - unknown");
++  os::Linux::set_libpthread_version("bionic - unknown");
+ #else
+   size_t n = confstr(_CS_GNU_LIBC_VERSION, nullptr, 0);
+   assert(n > 0, "cannot retrieve glibc version");
+@@ -2025,6 +2042,9 @@ void * os::Linux::dll_load_in_vmthread(const char *filename, char *ebuf,
+ }
+ 
+ const char* os::Linux::dll_path(void* lib) {
++#ifdef __BIONIC__
++  return nullptr;
++#else
+   struct link_map *lmap;
+   const char* l_path = nullptr;
+   assert(lib != nullptr, "dll_path parameter must not be null");
+@@ -2034,6 +2054,7 @@ const char* os::Linux::dll_path(void* lib) {
+     l_path = lmap->l_name;
+   }
+   return l_path;
++#endif
+ }
+ 
+ static unsigned count_newlines(const char* s) {
+@@ -3175,7 +3196,11 @@ extern "C" JNIEXPORT void numa_error(char *where) { }
+ // Handle request to load libnuma symbol version 1.1 (API v1). If it fails
+ // load symbol from base version instead.
+ void* os::Linux::libnuma_dlsym(void* handle, const char *name) {
++  #ifndef __BIONIC__
+   void *f = dlvsym(handle, name, "libnuma_1.1");
++  #else
++  void *f = dlsym(handle, name);
++  #endif
+   if (f == nullptr) {
+     f = dlsym(handle, name);
+   }
+@@ -3185,7 +3210,11 @@ void* os::Linux::libnuma_dlsym(void* handle, const char *name) {
+ // Handle request to load libnuma symbol version 1.2 (API v2) only.
+ // Return null if the symbol is not defined in this particular version.
+ void* os::Linux::libnuma_v2_dlsym(void* handle, const char* name) {
++  #ifndef __BIONIC__
+   return dlvsym(handle, name, "libnuma_1.2");
++  #else
++  return dlsym(handle, name);
++  #endif
+ }
+ 
+ // Check numa dependent syscalls
+@@ -4497,7 +4526,12 @@ void os::init(void) {
+   check_pax();
+ 
+   // Check the availability of MADV_POPULATE_WRITE.
++#ifdef __BIONIC__
++  char dummy2;
++  FLAG_SET_DEFAULT(UseMadvPopulateWrite, (::madvise(&dummy2, 1, MADV_POPULATE_WRITE) == 0));
++#else
+   FLAG_SET_DEFAULT(UseMadvPopulateWrite, (::madvise(nullptr, 0, MADV_POPULATE_WRITE) == 0));
++#endif
+ 
+   os::Posix::init();
+ }
+@@ -5109,7 +5143,11 @@ bool os::is_thread_cpu_time_supported() {
+ // Linux doesn't yet have a (official) notion of processor sets,
+ // so just return the system wide load average.
+ int os::loadavg(double loadavg[], int nelem) {
++  #ifndef __BIONIC__
+   return ::getloadavg(loadavg, nelem);
++  #else
++  return -1;
++  #endif
+ }
+ 
+ // Get the default path to the core file
+diff --git a/src/hotspot/os/linux/os_perf_linux.cpp b/src/hotspot/os/linux/os_perf_linux.cpp
+index c0e863ed2..2716547c9 100644
+--- a/src/hotspot/os/linux/os_perf_linux.cpp
++++ b/src/hotspot/os/linux/os_perf_linux.cpp
+@@ -1003,6 +1003,7 @@ int64_t NetworkPerformanceInterface::NetworkPerformance::read_counter(const char
+ 
+ int NetworkPerformanceInterface::NetworkPerformance::network_utilization(NetworkInterface** network_interfaces) const
+ {
++#ifndef __BIONIC__
+   ifaddrs* addresses;
+   ifaddrs* cur_address;
+ 
+@@ -1027,6 +1028,9 @@ int NetworkPerformanceInterface::NetworkPerformance::network_utilization(Network
+   *network_interfaces = ret;
+ 
+   return OS_OK;
++#else
++  return -1;
++#endif
+ }
+ 
+ NetworkPerformanceInterface::NetworkPerformanceInterface() {
+diff --git a/src/hotspot/os/posix/os_posix.cpp b/src/hotspot/os/posix/os_posix.cpp
+index 1eee76b46..91a881bca 100644
+--- a/src/hotspot/os/posix/os_posix.cpp
++++ b/src/hotspot/os/posix/os_posix.cpp
+@@ -1424,7 +1424,7 @@ static bool _use_clock_monotonic_condattr = false;
+ // Determine what POSIX API's are present and do appropriate
+ // configuration.
+ void os::Posix::init(void) {
+-#if defined(_ALLBSD_SOURCE)
++#if defined(_ALLBSD_SOURCE) && !defined(ANDROID)
+   clock_tics_per_sec = CLK_TCK;
+ #else
+   clock_tics_per_sec = checked_cast<int>(sysconf(_SC_CLK_TCK));
+@@ -2149,6 +2149,7 @@ char** os::get_environ() { return environ; }
+ //        -this function is unsafe to use in non-error situations, mainly
+ //         because the child process will inherit all parent descriptors.
+ int os::fork_and_exec(const char* cmd) {
++#ifndef __BIONIC__
+   const char* argv[4] = {"sh", "-c", cmd, nullptr};
+   pid_t pid = -1;
+   char** env = os::get_environ();
+@@ -2185,6 +2186,9 @@ int os::fork_and_exec(const char* cmd) {
+     // Don't log, we are inside error handling
+     return -1;
+   }
++#else
++  return -1;
++#endif
+ }
+ 
+ bool os::message_box(const char* title, const char* message) {
+diff --git a/src/hotspot/os_cpu/bsd_aarch64/os_bsd_aarch64.cpp b/src/hotspot/os_cpu/bsd_aarch64/os_bsd_aarch64.cpp
+index 6f31bc284..adccc8aff 100644
+--- a/src/hotspot/os_cpu/bsd_aarch64/os_bsd_aarch64.cpp
++++ b/src/hotspot/os_cpu/bsd_aarch64/os_bsd_aarch64.cpp
+@@ -520,7 +520,9 @@ THREAD_LOCAL bool os::_jit_exec_enabled;
+ void os::current_thread_enable_wx(WXMode mode) {
+   bool exec_enabled = mode != WXWrite;
+   if (exec_enabled != _jit_exec_enabled NOT_PRODUCT( || DefaultWXWriteMode == WXWrite)) {
++#ifndef __IOS__
+     permit_forbidden_function::pthread_jit_write_protect_np(exec_enabled);
++#endif
+     _jit_exec_enabled = exec_enabled;
+   }
+ }
 diff --git a/src/hotspot/os_cpu/bsd_zero/os_bsd_zero.cpp b/src/hotspot/os_cpu/bsd_zero/os_bsd_zero.cpp
-index 94d3260c484..4a80753f579 100644
+index a089d5981..4a80753f5 100644
 --- a/src/hotspot/os_cpu/bsd_zero/os_bsd_zero.cpp
 +++ b/src/hotspot/os_cpu/bsd_zero/os_bsd_zero.cpp
-@@ -274,11 +274,30 @@ int os::extra_bang_size_in_bytes() {
+@@ -274,8 +274,29 @@ int os::extra_bang_size_in_bytes() {
  }
  
  #if defined(AARCH64) && defined(__APPLE__)
@@ -108,10 +637,10 @@ index 94d3260c484..4a80753f579 100644
 +
  void os::current_thread_enable_wx(WXMode mode) {
 +  _jit_exec_enabled = mode != WXWrite;
- #ifndef __IOS__
++#ifndef __IOS__
    pthread_jit_write_protect_np(mode == WXExec);
- #endif
- }
++#endif
++}
 +
 +bool Thread::wx_enable_write() {
 +  if (_wx_state == WXArmedForWrite) {
@@ -124,12 +653,127 @@ index 94d3260c484..4a80753f579 100644
 +
 +void os::thread_wx_enable_write_impl() {
 +  Thread::current()->wx_enable_write();
-+}
+ }
  #endif
  
- void os::setup_fpu() {}
+diff --git a/src/hotspot/share/classfile/classLoader.cpp b/src/hotspot/share/classfile/classLoader.cpp
+index 221875e29..26792f9e1 100644
+--- a/src/hotspot/share/classfile/classLoader.cpp
++++ b/src/hotspot/share/classfile/classLoader.cpp
+@@ -904,10 +904,17 @@ void ClassLoader::load_jimage_library() {
+   assert(JImageOpen == nullptr, "should not load jimage library twice");
+ 
+   if (is_vm_statically_linked()) {
++#ifndef __BIONIC__
+       JImageOpen = CAST_TO_FN_PTR(JImageOpen_t, os::lookup_function("JIMAGE_Open"));
+       JImageClose = CAST_TO_FN_PTR(JImageClose_t, os::lookup_function("JIMAGE_Close"));
+       JImageFindResource = CAST_TO_FN_PTR(JImageFindResource_t, os::lookup_function("JIMAGE_FindResource"));
+       JImageGetResource = CAST_TO_FN_PTR(JImageGetResource_t, os::lookup_function("JIMAGE_GetResource"));
++#else
++      JImageOpen = JIMAGE_Open;
++      JImageClose = JIMAGE_Close;
++      JImageFindResource = JIMAGE_FindResource;
++      JImageGetResource = JIMAGE_GetResource;
++#endif
+       assert(JImageOpen != nullptr && JImageClose != nullptr &&
+             JImageFindResource != nullptr && JImageGetResource != nullptr,
+             "could not lookup all jimage library functions");
+diff --git a/src/hotspot/share/nmt/memMapPrinter.cpp b/src/hotspot/share/nmt/memMapPrinter.cpp
+index 639e06292..17ede6b1e 100644
+--- a/src/hotspot/share/nmt/memMapPrinter.cpp
++++ b/src/hotspot/share/nmt/memMapPrinter.cpp
+@@ -23,7 +23,7 @@
+  *
+  */
+ 
+-#if defined(LINUX) || defined(_WIN64) || defined(__APPLE__)
++#if defined(LINUX) || defined(_WIN64) || (defined(__APPLE__) && !defined(__IOS__))
+ 
+ #include "gc/shared/collectedHeap.hpp"
+ #include "logging/logAsyncWriter.hpp"
+diff --git a/src/hotspot/share/nmt/memMapPrinter.hpp b/src/hotspot/share/nmt/memMapPrinter.hpp
+index 34897a0c7..65bd07605 100644
+--- a/src/hotspot/share/nmt/memMapPrinter.hpp
++++ b/src/hotspot/share/nmt/memMapPrinter.hpp
+@@ -30,7 +30,7 @@
+ #include "nmt/memTag.hpp"
+ #include "utilities/globalDefinitions.hpp"
+ 
+-#if defined(LINUX) || defined(_WIN64) || defined(__APPLE__)
++#if defined(LINUX) || defined(_WIN64) || (defined(__APPLE__) && !defined(__IOS__))
+ 
+ class outputStream;
+ class CachedNMTInformation;
+diff --git a/src/hotspot/share/prims/whitebox.cpp b/src/hotspot/share/prims/whitebox.cpp
+index 2c389d37f..4e49b5554 100644
+--- a/src/hotspot/share/prims/whitebox.cpp
++++ b/src/hotspot/share/prims/whitebox.cpp
+@@ -2521,12 +2521,14 @@ WB_END
+ WB_ENTRY(jboolean, WB_CheckLibSpecifiesNoexecstack(JNIEnv* env, jobject o, jstring libfile))
+   jboolean ret = false;
+ #ifdef LINUX
++#ifndef __IOS__
+   // Can't be in VM when we call JNI.
+   ThreadToNativeFromVM ttnfv(thread);
+   const char* lf = env->GetStringUTFChars(libfile, nullptr);
+   CHECK_JNI_EXCEPTION_(env, 0);
+   ret = (jboolean) ElfFile::specifies_noexecstack(lf);
+   env->ReleaseStringUTFChars(libfile, lf);
++#endif // IOS
+ #endif
+   return ret;
+ WB_END
+diff --git a/src/hotspot/share/runtime/thread.inline.hpp b/src/hotspot/share/runtime/thread.inline.hpp
+index b4cf3ec58..ded5e166f 100644
+--- a/src/hotspot/share/runtime/thread.inline.hpp
++++ b/src/hotspot/share/runtime/thread.inline.hpp
+@@ -68,7 +68,9 @@ inline void Thread::init_wx() {
+   assert(this == Thread::current(), "should only be called for current thread");
+   assert(!_wx_init, "second init");
+   _wx_state = WXWrite;
++#ifndef __IOS__
+   permit_forbidden_function::pthread_jit_write_protect_np(false);
++#endif
+   os::current_thread_enable_wx(_wx_state);
+   // Side effect: preload base address of libjvm
+   guarantee(os::address_is_in_vm(CAST_FROM_FN_PTR(address, &dummy)), "must be");
+diff --git a/src/hotspot/share/services/diagnosticCommand.cpp b/src/hotspot/share/services/diagnosticCommand.cpp
+index f2fa11413..fab5b940c 100644
+--- a/src/hotspot/share/services/diagnosticCommand.cpp
++++ b/src/hotspot/share/services/diagnosticCommand.cpp
+@@ -142,7 +142,7 @@ void DCmd::register_dcmds() {
+   DCmdFactory::register_DCmdFactory(new DCmdFactoryImpl<TrimCLibcHeapDCmd>(full_export));
+   DCmdFactory::register_DCmdFactory(new DCmdFactoryImpl<MallocInfoDcmd>(full_export));
+ #endif // LINUX
+-#if defined(LINUX) || defined(_WIN64) || defined(__APPLE__)
++#if defined(LINUX) || defined(_WIN64) || (defined(__APPLE__) && !defined(__IOS__))
+   DCmdFactory::register_DCmdFactory(new DCmdFactoryImpl<SystemMapDCmd>(full_export));
+   DCmdFactory::register_DCmdFactory(new DCmdFactoryImpl<SystemDumpMapDCmd>(full_export));
+ #endif // LINUX or WINDOWS or MacOS
+@@ -1178,7 +1178,7 @@ void CompilationMemoryStatisticDCmd::execute(DCmdSource source, TRAPS) {
+   CompilationMemoryStatistic::print_jcmd_report(output(), _verbose.value(), _legend.value(), minsize);
+ }
+ 
+-#if defined(LINUX) || defined(_WIN64) || defined(__APPLE__)
++#if defined(LINUX) || defined(_WIN64) || (defined(__APPLE__) && !defined(__IOS__))
+ 
+ SystemMapDCmd::SystemMapDCmd(outputStream* output, bool heap) : DCmd(output, heap) {}
+ 
+diff --git a/src/hotspot/share/services/diagnosticCommand.hpp b/src/hotspot/share/services/diagnosticCommand.hpp
+index 97ceb19d0..d05d3b44c 100644
+--- a/src/hotspot/share/services/diagnosticCommand.hpp
++++ b/src/hotspot/share/services/diagnosticCommand.hpp
+@@ -850,7 +850,7 @@ class CompilationMemoryStatisticDCmd: public DCmdWithParser {
+   virtual void execute(DCmdSource source, TRAPS);
+ };
+ 
+-#if defined(LINUX) || defined(_WIN64) || defined(__APPLE__)
++#if defined(LINUX) || defined(_WIN64) || (defined(__APPLE__) && !defined(__IOS__))
+ 
+ class SystemMapDCmd : public DCmd {
+ public:
 diff --git a/src/hotspot/share/utilities/compilerWarnings.hpp b/src/hotspot/share/utilities/compilerWarnings.hpp
-index 3a2a94164a1..0bb238c39a5 100644
+index 3a2a94164..0bb238c39 100644
 --- a/src/hotspot/share/utilities/compilerWarnings.hpp
 +++ b/src/hotspot/share/utilities/compilerWarnings.hpp
 @@ -127,8 +127,12 @@
@@ -146,8 +790,373 @@ index 3a2a94164a1..0bb238c39a5 100644
  #define FORBIDDEN_FUNCTION_COND_NOEXCEPT_
  
  #ifndef FORBIDDEN_FUNCTION_IMPORT_SPEC
+diff --git a/src/hotspot/share/utilities/decoder_elf.hpp b/src/hotspot/share/utilities/decoder_elf.hpp
+index 0f8342db8..9b2b6b1af 100644
+--- a/src/hotspot/share/utilities/decoder_elf.hpp
++++ b/src/hotspot/share/utilities/decoder_elf.hpp
+@@ -25,7 +25,7 @@
+ #ifndef SHARE_UTILITIES_DECODER_ELF_HPP
+ #define SHARE_UTILITIES_DECODER_ELF_HPP
+ 
+-#if !defined(_WINDOWS) && !defined(__APPLE__)
++#if !defined(_WINDOWS) && (!defined(__APPLE__) || defined(__IOS__))
+ 
+ #include "utilities/decoder.hpp"
+ #include "utilities/elfFile.hpp"
+diff --git a/src/hotspot/share/utilities/forbiddenFunctions.hpp b/src/hotspot/share/utilities/forbiddenFunctions.hpp
+index 9b3c65b06..191588e4c 100644
+--- a/src/hotspot/share/utilities/forbiddenFunctions.hpp
++++ b/src/hotspot/share/utilities/forbiddenFunctions.hpp
+@@ -35,14 +35,17 @@
+ #ifdef _WINDOWS
+ #include "forbiddenFunctions_windows.hpp"
+ #else
++#if !defined(__BIONIC__)
+ #include "forbiddenFunctions_posix.hpp"
+ #endif
++#endif
+ 
+ // Forbid the use of various C library functions.  Some of these have os::
+ // replacements that should be used instead.  Others are considered obsolete
+ // or have security concerns, either with preferred alternatives, or to be
+ // avoided entirely.
+ 
++#if !defined(__BIONIC__)
+ FORBID_IMPORTED_C_FUNCTION(char* strerror(int), noexcept, "use os::strerror");
+ FORBID_IMPORTED_C_FUNCTION(char* strtok(char*, const char*), noexcept, "use strtok_r");
+ 
+@@ -67,4 +70,5 @@ FORBID_IMPORTED_C_FUNCTION(wchar_t* wcsdup(const wchar_t *s), noexcept, "don't u
+ MACOS_AARCH64_ONLY(FORBID_C_FUNCTION(void pthread_jit_write_protect_np(int enabled), noexcept, \
+                                      "use os::current_thread_enable_wx");)
+ 
++#endif
+ #endif // SHARE_UTILITIES_FORBIDDENFUNCTIONS_HPP
+diff --git a/src/hotspot/share/utilities/globalDefinitions_gcc.hpp b/src/hotspot/share/utilities/globalDefinitions_gcc.hpp
+index 302a62de6..c1abc95b7 100644
+--- a/src/hotspot/share/utilities/globalDefinitions_gcc.hpp
++++ b/src/hotspot/share/utilities/globalDefinitions_gcc.hpp
+@@ -52,7 +52,7 @@
+ 
+ #if defined(LINUX) || defined(_ALLBSD_SOURCE) || defined(_AIX)
+ #include <signal.h>
+-#ifndef __OpenBSD__
++#if !defined(__OpenBSD__) && !defined(__IOS__)
+ #include <ucontext.h>
+ #endif
+ #ifdef __APPLE__
+diff --git a/src/hotspot/share/utilities/permitForbiddenFunctions.hpp b/src/hotspot/share/utilities/permitForbiddenFunctions.hpp
+index 5dec5062b..b204ed870 100644
+--- a/src/hotspot/share/utilities/permitForbiddenFunctions.hpp
++++ b/src/hotspot/share/utilities/permitForbiddenFunctions.hpp
+@@ -70,9 +70,11 @@ inline void* realloc(void* ptr, size_t size) { return ::realloc(ptr, size); }
+ 
+ inline char* strdup(const char* s) { return ::strdup(s); }
+ 
++#ifndef __IOS__
+ MACOS_AARCH64_ONLY( \
+   inline void pthread_jit_write_protect_np(int enabled) { return ::pthread_jit_write_protect_np(enabled); } \
+ )
++#endif
+ 
+ END_ALLOW_FORBIDDEN_FUNCTIONS
+ } // namespace permit_forbidden_function
+diff --git a/src/java.base/macosx/native/libjava/java_props_macosx.c b/src/java.base/macosx/native/libjava/java_props_macosx.c
+index 94749ee3e..6954c1565 100644
+--- a/src/java.base/macosx/native/libjava/java_props_macosx.c
++++ b/src/java.base/macosx/native/libjava/java_props_macosx.c
+@@ -23,6 +23,7 @@
+  * questions.
+  */
+ 
++#ifndef __IOS__
+ #include <sys/socket.h>
+ #include <netinet/in.h>
+ #include <arpa/inet.h>
+@@ -31,6 +32,16 @@
+ #include <CoreFoundation/CoreFoundation.h>
+ #include <SystemConfiguration/SystemConfiguration.h>
+ #include <Foundation/Foundation.h>
++#else
++#include <stdlib.h>
++#include <string.h>
++#include <sys/param.h>
++#include <objc/runtime.h>
++#include <objc/objc.h>
++#include <objc/message.h>
++#include <CoreFoundation/CoreFoundation.h>
++#include <CoreFoundation/CFlocale.h>
++#endif
+ 
+ #include "java_props_macosx.h"
+ 
+@@ -222,6 +233,7 @@ char *setupMacOSXLocale(int cat) {
+     }
+ }
+ 
++#ifndef __IOS__
+ void setOSNameAndVersion(java_props_t *sprops) {
+     // Hardcode os_name, and fill in os_version
+     sprops->os_name = strdup("Mac OS X");
+@@ -473,3 +485,4 @@ void setProxyProperties(java_props_t *sProps) {
+ 
+     CFRelease(dict);
+ }
++#endif
+diff --git a/src/java.base/macosx/native/libjli/java_md_macosx.m b/src/java.base/macosx/native/libjli/java_md_macosx.m
+index 2b205a65b..5de5dfff8 100644
+--- a/src/java.base/macosx/native/libjli/java_md_macosx.m
++++ b/src/java.base/macosx/native/libjli/java_md_macosx.m
+@@ -39,10 +39,12 @@
+ 
+ #include "manifest_info.h"
+ 
++#ifndef __IOS__
+ /* Support Cocoa event loop on the main thread */
+ #include <Cocoa/Cocoa.h>
+ #include <objc/objc-runtime.h>
+ #include <objc/objc-auto.h>
++#endif
+ 
+ #include <errno.h>
+ #include <spawn.h>
+@@ -237,7 +239,11 @@
+     sPreferredJVMType = strdup(prefJVM);
+ }
+ 
++#ifdef __IOS__
++static jboolean awtLoaded = 0;
++#else
+ static BOOL awtLoaded = NO;
++#endif
+ static pthread_mutex_t awtLoaded_mutex = PTHREAD_MUTEX_INITIALIZER;
+ static pthread_cond_t  awtLoaded_cv = PTHREAD_COND_INITIALIZER;
+ 
+@@ -245,7 +251,11 @@
+ JLI_NotifyAWTLoaded()
+ {
+     pthread_mutex_lock(&awtLoaded_mutex);
++#ifdef __IOS__
++    awtLoaded = 1;
++#else
+     awtLoaded = YES;
++#endif
+     pthread_cond_signal(&awtLoaded_cv);
+     pthread_mutex_unlock(&awtLoaded_mutex);
+ }
+@@ -274,6 +284,7 @@
+     exit(main_fptr(args->argc, args->argv));
+ }
+ 
++#ifndef __IOS__
+ static void dummyTimer(CFRunLoopTimerRef timer, void *info) {}
+ 
+ static void ParkEventLoop() {
+@@ -288,6 +299,7 @@ static void ParkEventLoop() {
+         result = CFRunLoopRunInMode(kCFRunLoopDefaultMode, 1.0e20, false);
+     } while (result != kCFRunLoopRunFinished);
+ }
++#endif
+ 
+ /*
+  * Mac OS X mandates that the GUI event loop run on very first thread of
+@@ -321,7 +333,9 @@ static void MacOSXStartup(int argc, char *argv[]) {
+         exit(1);
+     }
+ 
++#ifndef __IOS__
+     ParkEventLoop();
++#endif
+ }
+ 
+ void
+@@ -896,6 +910,7 @@ static size_t adjustStackSize(size_t stack_size) {
+ JVMInit(InvocationFunctions* ifn, jlong threadStackSize,
+                  int argc, char **argv,
+                  int mode, char *what, int ret) {
++#ifndef __IOS__
+     if (sameThread) {
+         JLI_TraceLauncher("In same thread\n");
+         // need to block this thread against the main thread
+@@ -926,6 +941,9 @@ static size_t adjustStackSize(size_t stack_size) {
+     } else {
+         return ContinueInNewThread(ifn, threadStackSize, argc, argv, mode, what, ret);
+     }
++#else
++  return ContinueInNewThread(ifn, threadStackSize, argc, argv, mode, what, ret);
++#endif
+ }
+ 
+ /*
+diff --git a/src/java.base/macosx/native/libnio/fs/UTIFileTypeDetector.c b/src/java.base/macosx/native/libnio/fs/UTIFileTypeDetector.c
+index 5e9451e85..d53ba216e 100644
+--- a/src/java.base/macosx/native/libnio/fs/UTIFileTypeDetector.c
++++ b/src/java.base/macosx/native/libnio/fs/UTIFileTypeDetector.c
+@@ -106,6 +106,7 @@ Java_sun_nio_fs_UTIFileTypeDetector_probe0(JNIEnv* env, jobject ftd,
+ 
+     CFStringRef extension = toCFString(env, ext);
+     if (extension != NULL) {
++#ifndef __IOS__ // deprecated on ios
+         CFStringRef uti =
+             UTTypeCreatePreferredIdentifierForTag(kUTTagClassFilenameExtension,
+                                                   extension, NULL);
+@@ -121,6 +122,7 @@ Java_sun_nio_fs_UTIFileTypeDetector_probe0(JNIEnv* env, jobject ftd,
+                 CFRelease(mimeType);
+             }
+         }
++#endif
+     }
+ 
+     return result;
+diff --git a/src/java.base/share/classes/jdk/internal/util/OperatingSystem.java b/src/java.base/share/classes/jdk/internal/util/OperatingSystem.java
+index 927ab682c..527a01526 100644
+--- a/src/java.base/share/classes/jdk/internal/util/OperatingSystem.java
++++ b/src/java.base/share/classes/jdk/internal/util/OperatingSystem.java
+@@ -59,6 +59,7 @@
+  *          case AIX->32768;
+  *          case MACOS->49152;
+  *          case WINDOWS->49152;
++ *          case IOS->49152;
+  *      };
+  * }
+  *}
+@@ -81,6 +82,10 @@ public enum OperatingSystem {
+      * The AIX Operating system.
+      */
+     AIX,
++    /**
++     * The iOS Operating system.
++     */
++    IOS,
+     ;
+ 
+     // The current OperatingSystem
+@@ -118,6 +123,13 @@ public static boolean isAix() {
+         return PlatformProps.TARGET_OS_IS_AIX;
+     }
+ 
++    /**
++     * {@return {@code true} if built for the iOS operating system}
++     */
++    public static boolean isIos() {
++        return PlatformProps.TARGET_OS_IS_IOS;
++    }
++
+     /**
+      * {@return the current operating system}
+      */
+diff --git a/src/java.base/share/classes/jdk/internal/util/PlatformProps.java.template b/src/java.base/share/classes/jdk/internal/util/PlatformProps.java.template
+index 9c2a2c845..0991ff614 100644
+--- a/src/java.base/share/classes/jdk/internal/util/PlatformProps.java.template
++++ b/src/java.base/share/classes/jdk/internal/util/PlatformProps.java.template
+@@ -39,6 +39,7 @@ class PlatformProps {
+     static final boolean TARGET_OS_IS_MACOS   = "@@OPENJDK_TARGET_OS@@" == "macos";
+     static final boolean TARGET_OS_IS_WINDOWS = "@@OPENJDK_TARGET_OS@@" == "windows";
+     static final boolean TARGET_OS_IS_AIX     = "@@OPENJDK_TARGET_OS@@" == "aix";
++    static final boolean TARGET_OS_IS_IOS     = "@@OPENJDK_TARGET_OS@@" == "ios";
+ 
+     // The Architecture value for the current architecture
+     static final String CURRENT_ARCH_STRING = "@@OPENJDK_TARGET_CPU@@";
+diff --git a/src/java.base/unix/native/libjava/ProcessImpl_md.c b/src/java.base/unix/native/libjava/ProcessImpl_md.c
+index 69af948d2..e473f5533 100644
+--- a/src/java.base/unix/native/libjava/ProcessImpl_md.c
++++ b/src/java.base/unix/native/libjava/ProcessImpl_md.c
+@@ -579,7 +579,11 @@ spawnChild(JNIEnv *env, jobject process, ChildStuff *c, const char *helperpath)
+     c->fds[0] = c->fds[1] = c->fds[2] = -1;
+     c->redirectErrorStream = false;
+ 
++#ifndef __BIONIC__
+     rval = posix_spawn(&resultPid, helperpath, &file_actions, 0, (char * const *) hlpargs, environ);
++#else
++    return -1;
++#endif
+ 
+     if (rval != 0) {
+         return -1;
+diff --git a/src/java.base/unix/native/libjava/TimeZone_md.c b/src/java.base/unix/native/libjava/TimeZone_md.c
+index 2f163cf27..23ef24aaa 100644
+--- a/src/java.base/unix/native/libjava/TimeZone_md.c
++++ b/src/java.base/unix/native/libjava/TimeZone_md.c
+@@ -45,18 +45,18 @@
+ #define filegets        fgets
+ #define fileclose       fclose
+ 
+-#if defined(__linux__) || defined(_ALLBSD_SOURCE)
++#if defined(__linux__) || defined(_ALLBSD_SOURCE) || defined(__IOS__)
+ static const char *ZONEINFO_DIR = "/usr/share/zoneinfo";
+ static const char *DEFAULT_ZONEINFO_FILE = "/etc/localtime";
+ #else
+ static const char *SYS_INIT_FILE = "/etc/default/init";
+ static const char *ZONEINFO_DIR = "/usr/share/lib/zoneinfo";
+ static const char *DEFAULT_ZONEINFO_FILE = "/usr/share/lib/zoneinfo/localtime";
+-#endif /* defined(__linux__) || defined(_ALLBSD_SOURCE) */
++#endif /* defined(__linux__) || defined(_ALLBSD_SOURCE) || defined(__IOS__) */
+ 
+ static const char popularZones[][4] = {"UTC", "GMT"};
+ 
+-#if defined(__linux__) || defined(MACOSX)
++#if defined(__linux__) || defined(MACOSX) || defined(__IOS__)
+ static char *isFileIdentical(char* buf, size_t size, char *pathname);
+ 
+ /*
+diff --git a/src/java.base/unix/native/libjava/UnixFileSystem_md.c b/src/java.base/unix/native/libjava/UnixFileSystem_md.c
+index ffda8320d..eff1f69ff 100644
+--- a/src/java.base/unix/native/libjava/UnixFileSystem_md.c
++++ b/src/java.base/unix/native/libjava/UnixFileSystem_md.c
+@@ -221,7 +221,7 @@ Java_java_io_UnixFileSystem_getLastModifiedTime0(JNIEnv *env, jobject this,
+ #if defined(_AIX)
+             rv =  (jlong)sb.st_mtime * 1000;
+             rv += (jlong)sb.st_mtime_n / 1000000;
+-#elif defined(MACOSX)
++#elif defined(MACOSX) || defined(__IOS__)
+             rv  = (jlong)sb.st_mtimespec.tv_sec * 1000;
+             rv += (jlong)sb.st_mtimespec.tv_nsec / 1000000;
+ #else
+@@ -405,7 +405,7 @@ Java_java_io_UnixFileSystem_setLastModifiedTime0(JNIEnv *env, jobject this,
+ #if defined(_AIX)
+             tv[0].tv_sec = sb.st_atime;
+             tv[0].tv_usec = sb.st_atime_n / 1000;
+-#elif defined(MACOSX)
++#elif defined(MACOSX) || defined(__IOS__)
+             tv[0].tv_sec = sb.st_atimespec.tv_sec;
+             tv[0].tv_usec = sb.st_atimespec.tv_nsec / 1000;
+ #else
+diff --git a/src/java.base/unix/native/libjava/java_props_md.c b/src/java.base/unix/native/libjava/java_props_md.c
+index 1cbc3665e..c9373dfd8 100644
+--- a/src/java.base/unix/native/libjava/java_props_md.c
++++ b/src/java.base/unix/native/libjava/java_props_md.c
+@@ -288,7 +288,11 @@ static int ParseLocale(JNIEnv* env, int cat, char ** std_language, char ** std_s
+         if (strcmp(p, "ISO8859-15") == 0)
+             p = "ISO8859-15";
+         else
++#ifndef __BIONIC__
+             p = nl_langinfo(CODESET);
++#else
++            p = "UTF-8";
++#endif
+ 
+         /* Convert the bare "646" used on Solaris to a proper IANA name */
+         if (strcmp(p, "646") == 0)
+@@ -529,6 +533,10 @@ GetJavaProperties(JNIEnv *env)
+ 
+     /* Current directory */
+     {
++#ifdef __IOS__
++    const char *homeDir = getenv("HOME");
++    sprops.user_dir = strdup(homeDir);
++#else
+         char buf[MAXPATHLEN];
+         errno = 0;
+         if (getcwd(buf, sizeof(buf)) == NULL) {
+@@ -539,6 +547,7 @@ GetJavaProperties(JNIEnv *env)
+         else {
+             sprops.user_dir = strdup(buf);
+         }
++#endif
+     }
+ 
+     sprops.file_separator = "/";
 diff --git a/src/java.base/unix/native/libjava/jni_util_md.c b/src/java.base/unix/native/libjava/jni_util_md.c
-index 7195b3defdf..5630d60488c 100644
+index 7195b3def..5630d6048 100644
 --- a/src/java.base/unix/native/libjava/jni_util_md.c
 +++ b/src/java.base/unix/native/libjava/jni_util_md.c
 @@ -31,7 +31,11 @@
@@ -163,3 +1172,230 @@ index 7195b3defdf..5630d60488c 100644
           (defined(_POSIX_C_SOURCE) && _POSIX_C_SOURCE < 200112L \
               && defined(_XOPEN_SOURCE) && _XOPEN_SOURCE < 600))
  extern int __xpg_strerror_r(int, char *, size_t);
+diff --git a/src/java.base/unix/native/libnet/NetworkInterface.c b/src/java.base/unix/native/libnet/NetworkInterface.c
+index 5ed99f256..5b3bff3da 100644
+--- a/src/java.base/unix/native/libnet/NetworkInterface.c
++++ b/src/java.base/unix/native/libnet/NetworkInterface.c
+@@ -25,7 +25,9 @@
+ #include <arpa/inet.h>
+ #include <errno.h>
+ #include <net/if.h>
++#ifndef __IOS__
+ #include <net/if_arp.h>
++#endif
+ #include <stdlib.h>
+ #include <string.h>
+ #include <sys/ioctl.h>
+diff --git a/src/java.base/unix/native/libnet/net_util_md.h b/src/java.base/unix/native/libnet/net_util_md.h
+index 639cf0051..ffa4c814e 100644
+--- a/src/java.base/unix/native/libnet/net_util_md.h
++++ b/src/java.base/unix/native/libnet/net_util_md.h
+@@ -26,6 +26,10 @@
+ #ifndef NET_UTILS_MD_H
+ #define NET_UTILS_MD_H
+ 
++#ifdef ANDROID
++#include <netinet/in.h>
++#endif
++
+ #include <netdb.h>
+ #include <poll.h>
+ #include <sys/socket.h>
+diff --git a/src/java.base/unix/native/libnio/fs/UnixNativeDispatcher.c b/src/java.base/unix/native/libnio/fs/UnixNativeDispatcher.c
+index 4b5cfabeb..0e96b90e9 100644
+--- a/src/java.base/unix/native/libnio/fs/UnixNativeDispatcher.c
++++ b/src/java.base/unix/native/libnio/fs/UnixNativeDispatcher.c
+@@ -628,7 +628,7 @@ static void copy_stat_attributes(JNIEnv* env, struct stat* buf, jobject attrs) {
+     // rely on default value of 0 for st_birthtime_nsec field on Darwin
+ #endif
+ 
+-#ifndef MACOSX
++#if !defined(MACOSX) && !defined(__IOS__)
+     (*env)->SetLongField(env, attrs, attrs_st_atime_nsec, (jlong)buf->st_atim.tv_nsec);
+     (*env)->SetLongField(env, attrs, attrs_st_mtime_nsec, (jlong)buf->st_mtim.tv_nsec);
+     (*env)->SetLongField(env, attrs, attrs_st_ctime_nsec, (jlong)buf->st_ctim.tv_nsec);
+diff --git a/src/java.instrument/unix/native/libinstrument/EncodingSupport_md.c b/src/java.instrument/unix/native/libinstrument/EncodingSupport_md.c
+index 490eea9a5..a35d4e35b 100644
+--- a/src/java.instrument/unix/native/libinstrument/EncodingSupport_md.c
++++ b/src/java.instrument/unix/native/libinstrument/EncodingSupport_md.c
+@@ -58,6 +58,7 @@ utfError(char *file, int line, char *message)
+ static void
+ utfInitialize(void)
+ {
++#ifndef __BIONIC__
+     const char* codeset;
+ 
+ #ifndef MACOSX
+@@ -92,6 +93,7 @@ utfInitialize(void)
+     if ( iconvFromPlatform == (iconv_t)-1 ) {
+         UTF_ERROR("Failed to complete iconv_open() setup");
+     }
++#endif
+ }
+ 
+ /*
+@@ -101,6 +103,7 @@ utfInitialize(void)
+ static int
+ iconvConvert(iconv_t ic, char *bytes, int len, char *output, int outputMaxLen)
+ {
++#ifndef __BIONIC__
+     int outputLen = 0;
+ 
+     UTF_ASSERT(bytes);
+@@ -139,6 +142,7 @@ iconvConvert(iconv_t ic, char *bytes, int len, char *output, int outputMaxLen)
+     (void)memcpy(output, bytes, len);
+     output[len] = 0;
+     return outputLen;
++#endif
+ }
+ 
+ /*
+diff --git a/src/jdk.hotspot.agent/linux/native/libsaproc/elfmacros.h b/src/jdk.hotspot.agent/linux/native/libsaproc/elfmacros.h
+index 2dc0b611c..78508bc7e 100644
+--- a/src/jdk.hotspot.agent/linux/native/libsaproc/elfmacros.h
++++ b/src/jdk.hotspot.agent/linux/native/libsaproc/elfmacros.h
+@@ -35,7 +35,9 @@
+ #define ELF_ADDR        Elf64_Addr
+ #define ELF_AUXV        Elf64_auxv_t
+ 
++#ifndef ANDROID
+ #define ELF_ST_TYPE     ELF64_ST_TYPE
++#endif
+ 
+ #else
+ 
+diff --git a/src/jdk.hotspot.agent/linux/native/libsaproc/ps_core.c b/src/jdk.hotspot.agent/linux/native/libsaproc/ps_core.c
+index c500360f3..66ba0b06e 100644
+--- a/src/jdk.hotspot.agent/linux/native/libsaproc/ps_core.c
++++ b/src/jdk.hotspot.agent/linux/native/libsaproc/ps_core.c
+@@ -194,6 +194,9 @@ static ps_prochandle_ops core_ops = {
+ 
+ // read regs and create thread from NT_PRSTATUS entries from core file
+ static bool core_handle_prstatus(struct ps_prochandle* ph, const char* buf, size_t nbytes) {
++#ifdef ANDROID
++    return false;
++#else
+    // we have to read prstatus_t from buf
+    // assert(nbytes == sizeof(prstaus_t), "size mismatch on prstatus_t");
+    prstatus_t* prstat = (prstatus_t*) buf;
+@@ -243,6 +246,7 @@ static bool core_handle_prstatus(struct ps_prochandle* ph, const char* buf, size
+    }
+ 
+    return true;
++#endif // ANDROID
+ }
+ 
+ #define ROUNDUP(x, y)  ((((x)+((y)-1))/(y))*(y))
+diff --git a/src/jdk.hotspot.agent/macosx/native/libsaproc/MacosxDebuggerLocal.m b/src/jdk.hotspot.agent/macosx/native/libsaproc/MacosxDebuggerLocal.m
+index a2f59a7ed..943af5fdf 100644
+--- a/src/jdk.hotspot.agent/macosx/native/libsaproc/MacosxDebuggerLocal.m
++++ b/src/jdk.hotspot.agent/macosx/native/libsaproc/MacosxDebuggerLocal.m
+@@ -23,7 +23,11 @@
+  *
+  */
+ 
++#ifndef __IOS__
+ #include <objc/objc-runtime.h>
++#else
++#include <objc/message.h>
++#endif
+ #import <Foundation/Foundation.h>
+ 
+ #include <jni.h>
+@@ -40,7 +44,9 @@
+ #import <limits.h>
+ #import <errno.h>
+ #import <sys/types.h>
++#ifndef __IOS__
+ #import <sys/ptrace.h>
++#endif
+ #include "libproc_impl.h"
+ 
+ #if defined(amd64)
+@@ -839,6 +845,7 @@ jlongArray getThreadIntegerRegisterSetFromCore(JNIEnv *env, jobject this_obj, lo
+ 
+ // attach to a process/thread specified by "pid"
+ static bool ptrace_attach(pid_t pid) {
++#ifndef __IOS__
+   errno = 0;
+   ptrace(PT_ATTACHEXC, pid, 0, 0);
+ 
+@@ -846,6 +853,7 @@ static bool ptrace_attach(pid_t pid) {
+     print_error("ptrace_attach: ptrace(PT_ATTACHEXC,...) failed: %s", strerror(errno));
+     return false;
+   }
++#endif
+   return true;
+ }
+ 
+@@ -1210,12 +1218,14 @@ static void detach_cleanup(task_t gTask, JNIEnv *env, jobject this_obj, bool thr
+     detach_cleanup(gTask, env, this_obj, true);
+   }
+   else {
++#ifndef __IOS__
+     errno = 0;
+     ptrace(PT_DETACH, pid, (caddr_t)1, 0);
+     if (errno != 0) {
+       print_error("detach: ptrace(PT_DETACH,...) failed: %s", strerror(errno));
+       detach_cleanup(gTask, env, this_obj, true);
+     }
++#endif
+   }
+ 
+   // reply to the previous exception message
+diff --git a/src/jdk.jdwp.agent/share/native/libjdwp/utf_util.c b/src/jdk.jdwp.agent/share/native/libjdwp/utf_util.c
+index 6bae02fce..b5bfcbaa2 100644
+--- a/src/jdk.jdwp.agent/share/native/libjdwp/utf_util.c
++++ b/src/jdk.jdwp.agent/share/native/libjdwp/utf_util.c
+@@ -460,6 +460,7 @@ typedef enum {TO_UTF8, FROM_UTF8} conv_direction;
+  * NOTE: outputBufSize includes the space for the trailing 0.
+  */
+ static int iconvConvert(conv_direction drn, char *bytes, size_t len, char *output, size_t outputBufSize) {
++#ifndef __BIONIC__
+ 
+     static char *codeset = 0;
+     iconv_t func;
+@@ -530,6 +531,9 @@ static int iconvConvert(conv_direction drn, char *bytes, size_t len, char *outpu
+     (void)memcpy(output, bytes, len);
+     output[len] = 0;
+     return len;
++#else
++    return -1;
++#endif
+  }
+ 
+ /*
+diff --git a/src/jdk.management/unix/native/libmanagement_ext/OperatingSystemImpl.c b/src/jdk.management/unix/native/libmanagement_ext/OperatingSystemImpl.c
+index 81a972999..7feb0140d 100644
+--- a/src/jdk.management/unix/native/libmanagement_ext/OperatingSystemImpl.c
++++ b/src/jdk.management/unix/native/libmanagement_ext/OperatingSystemImpl.c
+@@ -38,9 +38,11 @@
+ #include <sys/param.h>
+ #include <sys/mount.h>
+ #include <mach/mach.h>
++#ifndef __IOS__
+ #include <sys/proc_info.h>
+ #include <libproc.h>
+ #endif
++#endif
+ #elif !defined(_AIX)
+ #include <sys/swap.h>
+ #endif
+@@ -271,6 +273,7 @@ Java_com_sun_management_internal_OperatingSystemImpl_getOpenFileDescriptorCount0
+   (JNIEnv *env, jobject mbean)
+ {
+ #ifdef __APPLE__
++#ifndef __IOS__
+     // This code is influenced by the darwin lsof source
+     pid_t my_pid;
+     struct proc_bsdinfo bsdinfo;
+@@ -314,6 +317,9 @@ Java_com_sun_management_internal_OperatingSystemImpl_getOpenFileDescriptorCount0
+     free(fds);
+ 
+     return nfiles;
++#else // IOS
++    return -1;
++#endif
+ #elif defined(_ALLBSD_SOURCE)
+     /*
+      * XXXBSD: there's no way available to do it in FreeBSD, AFAIK.

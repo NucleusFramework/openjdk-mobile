@@ -2,18 +2,18 @@
 # Builds OpenJDK's mobile port as a Java runtime an app embeds (see README.md), packaged as <dist>/<asset>.tar.gz with its
 # SHA-256:
 #
-#   ./build.sh ios-simulator | ios-device | android <openjdk/mobile checkout> [dist dir] [asset name]
+#   ./build.sh ios-simulator | ios-device | android <OpenJDK 27 checkout> [dist dir] [asset name]
 #
 #   ios-*     Zero (the interpreter, as iOS forbids generated code), as static libraries the app links
 #   android   the server VM (JIT), linked into a launcher the app runs as a process (jvm_launcher.c), Android 10+
 #
-# Applies openjdk-mobile.patch to the checkout unless it is already applied. Needs autoconf and a boot JDK 26+ (BOOT_JDK,
-# else java_home -v 26); Xcode for iOS; for Android the NDK (ANDROID_NDK_HOME, else the latest of $ANDROID_HOME/ndk) and
-# fontconfig's headers (java.desktop needs them to build; FONTCONFIG_INCLUDE, else brew's).
+# Applies openjdk-mobile.patch to the checkout unless it is already applied. Needs autoconf and a boot JDK 26 or 27
+# (BOOT_JDK, else java_home -v 26); Xcode for iOS; for Android the NDK (ANDROID_NDK_HOME, else the latest of
+# $ANDROID_HOME/ndk) and fontconfig's headers (java.desktop needs them to build; FONTCONFIG_INCLUDE, else brew's).
 set -euo pipefail
 
 TARGET=${1:?ios-simulator, ios-device or android}
-SRC=$(cd "${2:?openjdk/mobile checkout}" && pwd)
+SRC=$(cd "${2:?OpenJDK 27 checkout}" && pwd)
 HERE=$(cd "$(dirname "$0")" && pwd)
 mkdir -p "${3:-$HERE/dist}"
 DIST=$(cd "${3:-$HERE/dist}" && pwd)

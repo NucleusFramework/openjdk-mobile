@@ -1,18 +1,18 @@
 name: Build
 
-# Follows openjdk/mobile: every day, and when the recipe changes, if upstream's head and this recipe have no release yet,
-# builds the iOS and Android runtimes from it with openjdk-mobile.patch and publishes them, in the same run, as
-# jdk-mobile-<version>b<build>.<revision> (see README.md)
+# Follows the JDK's stable line (openjdk/jdk27u): every day, and when the recipe changes, if its latest GA and this recipe
+# have no release yet, builds the iOS and Android runtimes from it with openjdk-mobile.patch and publishes them, in the
+# same run, as jdk-mobile-<version>b<build>.<revision> (see README.md)
 on:
   schedule:
     - cron: '0 3 * * *'
   workflow_dispatch:
     inputs:
-      upstream:
-        description: openjdk/mobile commit (default its head)
+      ga:
+        description: GA tag of the line to build (default its latest, e.g. jdk-27-ga)
         required: false
       force:
-        description: Build even if this upstream commit and recipe have a release
+        description: Build even if this GA and recipe have a release
         type: boolean
         default: false
   push:
@@ -22,12 +22,16 @@ on:
 permissions:
   contents: write
 
+env:
+  # The stable line the patch is ported to
+  JDK_LINE: '27'
+
 jobs:
   version:
     runs-on: ubuntu-latest
     outputs:
-      build: ${{ steps.version.outputs.build }}
-      upstream: ${{ steps.version.outputs.upstream }}
+      repo: ${{ steps.version.outputs.repo }}
+      commit: ${{ steps.version.outputs.commit }}
       tag: ${{ steps.version.outputs.tag }}
       suffix: ${{ steps.version.outputs.suffix }}
       key: ${{ steps.version.outputs.key }}
@@ -36,28 +40,23 @@ jobs:
       - id: version
         env:
           GH_TOKEN: ${{ github.token }}
-          UPSTREAM: ${{ inputs.upstream }}
+          GA: ${{ inputs.ga }}
           FORCE: ${{ inputs.force }}
         run: |
           set -euo pipefail
-          # The commits alone (no trees nor blobs) are enough to name the JDK build upstream is at
-          git clone -q --filter=tree:0 --no-checkout --single-branch https://github.com/openjdk/mobile.git upstream
-          cd upstream
-          sha=$(git rev-parse "${UPSTREAM:-HEAD}")
-          conf=$(git show "$sha:make/conf/version-numbers.conf")
-          value() { echo "$conf" | sed -n "s/^$1=//p"; }
-          feature=$(value DEFAULT_VERSION_FEATURE)
-          version=$feature
-          interim=$(value DEFAULT_VERSION_INTERIM); update=$(value DEFAULT_VERSION_UPDATE)
-          [ "$interim.$update" = "0.0" ] || version="$feature.$interim.$update"
-          git fetch -q --filter=tree:0 --no-tags https://github.com/openjdk/jdk.git "refs/tags/jdk-$feature+*:refs/tags/jdk-$feature+*"
-          jdkTag=$(git describe --tags --abbrev=0 --match "jdk-$feature+*" "$sha")
+          repo=https://github.com/openjdk/jdk${JDK_LINE}u.git
+          tags=$(git ls-remote --tags "$repo" "jdk-$JDK_LINE*")
+          # The line's latest GA (jdk-27-ga, jdk-27.0.1-ga...), its commit and the JDK build it is (jdk-27+35)
+          ga=${GA:-$(echo "$tags" | awk '{print $2}' | sed -n 's|^refs/tags/\(jdk-.*-ga\)^{}$|\1|p' | sort -V | tail -1)}
+          commit=$(echo "$tags" | awk -v ref="refs/tags/$ga^{}" '$2 == ref {print $1}')
+          [ -n "$commit" ] || { echo "No GA tag $ga in $repo" >&2; exit 1; }
+          jdkTag=$(echo "$tags" | awk -v c="$commit" '$1 == c {print $2}' | sed -n 's|^refs/tags/\(jdk-[0-9.]*+[0-9]*\)^{}$|\1|p' | head -1)
+          version=${ga#jdk-}; version=${version%-ga}
           jdkBuild=${jdkTag##*+}
-          cd ..
 
-          # A release per upstream commit and recipe (the patch, the script, the launcher)
+          # A release per GA and recipe (the patch, the script, the launcher)
           recipe=$(git rev-parse HEAD:openjdk-mobile.patch HEAD:build.sh HEAD:jvm_launcher.c | git hash-object --stdin | cut -c1-12)
-          key="upstream $sha, recipe $recipe"
+          key="$ga ($commit), recipe $recipe"
           releases=$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate --jq '.[] | [.tag_name, .body] | @tsv')
           if [ "$FORCE" != "true" ] && echo "$releases" | grep -qF "$key"; then
             echo "Already released: $key"
@@ -67,8 +66,8 @@ jobs:
           revision=$(echo "$releases" | cut -f1 | sed -n "s/^$(echo "$prefix" | sed 's/[.+]/\\&/g')\([0-9]*\)$/\1/p" | sort -n | tail -1)
           build="$jdkBuild.$(( ${revision:-0} + 1 ))"
           {
-            echo "build=$build"
-            echo "upstream=$sha"
+            echo "repo=$repo"
+            echo "commit=$commit"
             echo "tag=jdk-mobile-${version}b$build"
             echo "suffix=$version|$build"
             echo "key=$key"
@@ -88,15 +87,16 @@ jobs:
       - uses: actions/checkout@v4
         with:
           path: recipe
-      - name: openjdk/mobile
+      - name: OpenJDK
         run: |
           git init -q jdk
-          git -C jdk fetch -q --depth 1 https://github.com/openjdk/mobile.git ${{ needs.version.outputs.upstream }}
+          git -C jdk fetch -q --depth 1 ${{ needs.version.outputs.repo }} ${{ needs.version.outputs.commit }}
           git -C jdk checkout -q FETCH_HEAD
+      # The boot JDK: the line's own release
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '26'
+          java-version: ${{ env.JDK_LINE }}
       - run: brew install autoconf fontconfig
       - name: Android NDK
         if: matrix.target == 'android'
@@ -131,4 +131,4 @@ jobs:
           KEY: ${{ needs.version.outputs.key }}
         run: |
           gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "$TAG" \
-            --notes "OpenJDK's mobile port for iOS (Zero) and Android (server VM), built from openjdk/mobile with this branch's patch: $KEY."
+            --notes "OpenJDK $JDK_LINE with openjdk/mobile's port, for iOS (Zero) and Android (server VM): $KEY."
