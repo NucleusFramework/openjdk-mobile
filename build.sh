@@ -133,8 +133,10 @@ build_android() {
         fontconfig=/usr/include
     fi
 
-    # The host compilers build the tools the build runs; the NDK's wrappers carry the target and its API level
-    BUILD_CC=${BUILD_CC:-$(command -v clang)} BUILD_CXX=${BUILD_CXX:-$(command -v clang++)} \
+    # The host compilers build the tools the build runs; the NDK's wrappers carry the target and its API level.
+    # config.guess identifies the host with CC_FOR_BUILD, else CC: the NDK's, which would make a Linux host Android
+    local build_cc=${BUILD_CC:-$(command -v clang)} build_cxx=${BUILD_CXX:-$(command -v clang++)}
+    BUILD_CC=$build_cc BUILD_CXX=$build_cxx CC_FOR_BUILD=$build_cc \
     CC=$tc/bin/$triple$ANDROID_API-clang CXX=$tc/bin/$triple$ANDROID_API-clang++ \
     sh configure \
         --disable-warnings-as-errors \
