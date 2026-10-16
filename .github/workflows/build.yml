@@ -1,0 +1,128 @@
+name: Build
+
+# Follows openjdk/mobile: every day, if its head (or this recipe) has no release yet, builds the iOS runtimes from it
+# with openjdk-mobile.patch and publishes them as jdk-mobile-<version>b<build>.<revision> (see README.md)
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+    inputs:
+      upstream:
+        description: openjdk/mobile commit (default its head)
+        required: false
+      force:
+        description: Build even if this upstream commit and recipe have a release
+        type: boolean
+        default: false
+  push:
+    branches: [mobile-runtime]
+    paths: [build.sh, openjdk-mobile.patch, .github/workflows/build.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      build: ${{ steps.version.outputs.build }}
+      upstream: ${{ steps.version.outputs.upstream }}
+      tag: ${{ steps.version.outputs.tag }}
+      suffix: ${{ steps.version.outputs.suffix }}
+      key: ${{ steps.version.outputs.key }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UPSTREAM: ${{ inputs.upstream }}
+          FORCE: ${{ inputs.force }}
+        run: |
+          set -euo pipefail
+          # The commits alone (no trees nor blobs) are enough to name the JDK build upstream is at
+          git clone -q --filter=tree:0 --no-checkout --single-branch https://github.com/openjdk/mobile.git upstream
+          cd upstream
+          sha=$(git rev-parse "${UPSTREAM:-HEAD}")
+          conf=$(git show "$sha:make/conf/version-numbers.conf")
+          value() { echo "$conf" | sed -n "s/^$1=//p"; }
+          feature=$(value DEFAULT_VERSION_FEATURE)
+          version=$feature
+          interim=$(value DEFAULT_VERSION_INTERIM); update=$(value DEFAULT_VERSION_UPDATE)
+          [ "$interim.$update" = "0.0" ] || version="$feature.$interim.$update"
+          git fetch -q --filter=tree:0 --no-tags https://github.com/openjdk/jdk.git "refs/tags/jdk-$feature+*:refs/tags/jdk-$feature+*"
+          jdkTag=$(git describe --tags --abbrev=0 --match "jdk-$feature+*" "$sha")
+          jdkBuild=${jdkTag##*+}
+          cd ..
+
+          # A release per upstream commit and recipe (the patch and the script)
+          key="upstream $sha, recipe $(git rev-parse HEAD:openjdk-mobile.patch | cut -c1-12)-$(git rev-parse HEAD:build.sh | cut -c1-12)"
+          releases=$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate --jq '.[] | [.tag_name, .body] | @tsv')
+          if [ "$FORCE" != "true" ] && echo "$releases" | grep -qF "$key"; then
+            echo "Already released: $key"
+            exit 0
+          fi
+          prefix="jdk-mobile-${version}b$jdkBuild."
+          revision=$(echo "$releases" | cut -f1 | sed -n "s/^$(echo "$prefix" | sed 's/[.+]/\\&/g')\([0-9]*\)$/\1/p" | sort -n | tail -1)
+          build="$jdkBuild.$(( ${revision:-0} + 1 ))"
+          {
+            echo "build=$build"
+            echo "upstream=$sha"
+            echo "tag=jdk-mobile-${version}b$build"
+            echo "suffix=$version|$build"
+            echo "key=$key"
+          } >> "$GITHUB_OUTPUT"
+          echo "Next: jdk-mobile-${version}b$build ($jdkTag, $key)"
+
+  build:
+    needs: version
+    if: needs.version.outputs.tag != ''
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [ios-simulator, ios-device]
+    runs-on: macos-15
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: recipe
+      - name: openjdk/mobile
+        run: |
+          git init -q jdk
+          git -C jdk fetch -q --depth 1 https://github.com/openjdk/mobile.git ${{ needs.version.outputs.upstream }}
+          git -C jdk checkout -q FETCH_HEAD
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '26'
+      - run: brew install autoconf
+      - name: Build
+        env:
+          SUFFIX: ${{ needs.version.outputs.suffix }}
+        run: |
+          # jdk-mobile-<version>-<target>-aarch64-b<build>, as the JBR names its archives
+          asset="jdk-mobile-${SUFFIX%%|*}-${{ matrix.target }}-aarch64-b${SUFFIX##*|}"
+          BOOT_JDK="$JAVA_HOME" recipe/build.sh ${{ matrix.target }} jdk dist "$asset"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: dist/*
+          retention-days: 7
+
+  release:
+    needs: [version, build]
+    if: github.event_name != 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.version.outputs.tag }}
+          KEY: ${{ needs.version.outputs.key }}
+        run: |
+          gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "$TAG" \
+            --notes "OpenJDK's mobile port for iOS (Zero), built from openjdk/mobile with this branch's patch: $KEY."

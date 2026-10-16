@@ -1,0 +1,50 @@
+diff --git a/src/hotspot/os/bsd/os_bsd.cpp b/src/hotspot/os/bsd/os_bsd.cpp
+index 9e7620df657..8d5f0bac157 100644
+--- a/src/hotspot/os/bsd/os_bsd.cpp
++++ b/src/hotspot/os/bsd/os_bsd.cpp
+@@ -1620,6 +1620,10 @@ static void warn_fail_commit_memory(char* addr, size_t size, bool exec,
+ //       left at the time of mmap(). This could be a potential
+ //       problem.
+ bool os::pd_commit_memory(char* addr, size_t size, bool exec) {
++#ifdef __IOS__
++  // iOS forbids executable mappings without the JIT entitlement; Zero never runs code from the code cache
++  exec = false;
++#endif
+   int prot = exec ? PROT_READ|PROT_WRITE|PROT_EXEC : PROT_READ|PROT_WRITE;
+ #if defined(__OpenBSD__)
+   // XXX: Work-around mmap/MAP_FIXED bug temporarily on OpenBSD
+diff --git a/src/hotspot/os_cpu/bsd_zero/os_bsd_zero.cpp b/src/hotspot/os_cpu/bsd_zero/os_bsd_zero.cpp
+index 94d3260c484..4a80753f579 100644
+--- a/src/hotspot/os_cpu/bsd_zero/os_bsd_zero.cpp
++++ b/src/hotspot/os_cpu/bsd_zero/os_bsd_zero.cpp
+@@ -274,11 +274,30 @@ int os::extra_bang_size_in_bytes() {
+ }
+ 
+ #if defined(AARCH64) && defined(__APPLE__)
++// The shared code tracks the W^X state of each thread (see os_bsd_aarch64.cpp); Zero generates no code, so the state
++// only switches the page protection of the MAP_JIT region where there is one (never on iOS)
++WXMode DefaultWXWriteMode = WXArmedForWrite;
++THREAD_LOCAL bool os::_jit_exec_enabled;
++
+ void os::current_thread_enable_wx(WXMode mode) {
++  _jit_exec_enabled = mode != WXWrite;
+ #ifndef __IOS__
+   pthread_jit_write_protect_np(mode == WXExec);
+ #endif
+ }
++
++bool Thread::wx_enable_write() {
++  if (_wx_state == WXArmedForWrite) {
++    _wx_state = WXWrite;
++    os::current_thread_enable_wx(WXWrite);
++    return true;
++  }
++  return false;
++}
++
++void os::thread_wx_enable_write_impl() {
++  Thread::current()->wx_enable_write();
++}
+ #endif
+ 
+ void os::setup_fpu() {}
