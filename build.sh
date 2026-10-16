@@ -8,8 +8,10 @@
 #   android-*   the server VM (JIT), linked into a launcher the app runs as a process (jvm_launcher.c), Android 10+
 #
 # Applies openjdk-mobile.patch to the checkout unless it is already applied. Needs autoconf and a boot JDK 26 or 27
-# (BOOT_JDK, else java_home -v 26); Xcode for iOS; for Android the NDK (ANDROID_NDK_HOME, else the latest of
-# $ANDROID_HOME/ndk) and fontconfig's headers (java.desktop needs them to build; FONTCONFIG_INCLUDE, else brew's).
+# (BOOT_JDK, else java_home -v 26 on macOS); iOS needs a macOS host with Xcode; Android builds from a Linux or macOS
+# host, with the NDK (ANDROID_NDK_HOME, else the latest of $ANDROID_HOME/ndk), a host clang (BUILD_CC/BUILD_CXX, else
+# the PATH's) and fontconfig's headers (java.desktop needs them to build; FONTCONFIG_INCLUDE, else brew's or
+# /usr/include: libfontconfig1-dev).
 set -euo pipefail
 
 TARGET=${1:?ios-simulator, ios-device, android-aarch64 or android-x64}
@@ -19,7 +21,8 @@ mkdir -p "${3:-$HERE/dist}"
 DIST=$(cd "${3:-$HERE/dist}" && pwd)
 ASSET=${4:-jdk-mobile-$TARGET}
 WORK=$SRC/build/mobile-runtime
-BOOT_JDK=${BOOT_JDK:-$(/usr/libexec/java_home -v 26)}
+BOOT_JDK=${BOOT_JDK:-$(/usr/libexec/java_home -v 26 2> /dev/null)}
+[ -n "$BOOT_JDK" ] || { echo "No boot JDK: set BOOT_JDK" >&2; exit 1; }
 # The cups headers, as openjdk/mobile's README asks (its libffi is built for iOS devices only: built here)
 SUPPORT_ZIP=https://download2.gluonhq.com/mobile/mobile-support-20250106.zip
 LIBFFI_VERSION=3.5.2
@@ -122,10 +125,16 @@ build_android() {
     esac
     ndk=${ANDROID_NDK_HOME:-$(ls -d "${ANDROID_HOME:-$HOME/Library/Android/sdk}"/ndk/* | sort | tail -1)}
     tc=$ndk/toolchains/llvm/prebuilt/$(ls "$ndk/toolchains/llvm/prebuilt" | head -1)
-    fontconfig=${FONTCONFIG_INCLUDE:-$(brew --prefix fontconfig)/include}
+    if [ -n "${FONTCONFIG_INCLUDE:-}" ]; then
+        fontconfig=$FONTCONFIG_INCLUDE
+    elif command -v brew > /dev/null; then
+        fontconfig=$(brew --prefix fontconfig)/include
+    else
+        fontconfig=/usr/include
+    fi
 
     # The host compilers build the tools the build runs; the NDK's wrappers carry the target and its API level
-    BUILD_CC=/usr/bin/clang BUILD_CXX=/usr/bin/clang++ \
+    BUILD_CC=${BUILD_CC:-$(command -v clang)} BUILD_CXX=${BUILD_CXX:-$(command -v clang++)} \
     CC=$tc/bin/$triple$ANDROID_API-clang CXX=$tc/bin/$triple$ANDROID_API-clang++ \
     sh configure \
         --disable-warnings-as-errors \

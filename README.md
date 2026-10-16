@@ -72,5 +72,5 @@ git clone --depth 1 --branch jdk-27-ga https://github.com/openjdk/jdk27u.git jdk
 ./build.sh ios-simulator jdk   # or ios-device, android-aarch64, android-x64 → dist/jdk-mobile-<target>.tar.gz
 ```
 
-Needs autoconf and a boot JDK 26 or 27 (`BOOT_JDK`); Xcode for iOS; the NDK (`ANDROID_NDK_HOME`) and fontconfig's headers for
-Android.
+Needs autoconf and a boot JDK 26 or 27 (`BOOT_JDK`); a macOS host with Xcode for iOS; for Android, a Linux (as the CI)
+or macOS host with the NDK (`ANDROID_NDK_HOME`), clang and fontconfig's headers.

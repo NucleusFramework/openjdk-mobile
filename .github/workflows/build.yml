@@ -80,13 +80,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # The script's target and the asset's (platform and architecture, as the JBR names them)
+        # The script's target, the asset's (platform and architecture, as the JBR names them) and the host: iOS needs
+        # Xcode, Android builds on Linux (the NDK's own host, and the smoke test's)
         include:
-          - { target: ios-simulator, asset: ios-simulator-aarch64 }
-          - { target: ios-device, asset: ios-device-aarch64 }
-          - { target: android-aarch64, asset: android-aarch64 }
-          - { target: android-x64, asset: android-x64 }
-    runs-on: macos-15
+          - { target: ios-simulator, asset: ios-simulator-aarch64, os: macos-15 }
+          - { target: ios-device, asset: ios-device-aarch64, os: macos-15 }
+          - { target: android-aarch64, asset: android-aarch64, os: ubuntu-latest }
+          - { target: android-x64, asset: android-x64, os: ubuntu-latest }
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 240
     steps:
       - uses: actions/checkout@v4
@@ -102,7 +103,12 @@ jobs:
         with:
           distribution: temurin
           java-version: ${{ env.JDK_LINE }}
-      - run: brew install autoconf fontconfig
+      - name: Tools (macOS)
+        if: runner.os == 'macOS'
+        run: brew install autoconf
+      - name: Tools (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update -q && sudo apt-get install -yq autoconf clang libfontconfig1-dev
       - name: Android NDK
         if: startsWith(matrix.target, 'android')
         run: |
