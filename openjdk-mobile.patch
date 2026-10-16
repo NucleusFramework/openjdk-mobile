@@ -40,7 +40,7 @@ index 423654cd5..33c59d08e 100644
  
    CFLAGS_OS_DEF_JDK="$CFLAGS_OS_DEF_JDK -D$OPENJDK_TARGET_OS_UPPERCASE"
 diff --git a/make/autoconf/flags-other.m4 b/make/autoconf/flags-other.m4
-index 4570f6ede..82f1c4a46 100644
+index 4570f6ede..257f0affb 100644
 --- a/make/autoconf/flags-other.m4
 +++ b/make/autoconf/flags-other.m4
 @@ -193,6 +193,9 @@ AC_DEFUN([FLAGS_SETUP_ASFLAGS],
@@ -48,7 +48,7 @@ index 4570f6ede..82f1c4a46 100644
      fi
    fi
 +  if test "x$OPENJDK_TARGET_OS" = xandroid; then
-+    JVM_BASIC_ASFLAGS="-target aarch64-linux-android"
++    JVM_BASIC_ASFLAGS="-target $OPENJDK_TARGET_CPU-linux-android"
 +  fi
  ])
  
@@ -228,16 +228,17 @@ index bdb8828eb..b8c9cd8a9 100644
        endif
      endif
 diff --git a/make/hotspot/lib/JvmFlags.gmk b/make/hotspot/lib/JvmFlags.gmk
-index 121f71bfa..08b9be98c 100644
+index 121f71bfa..49a677a29 100644
 --- a/make/hotspot/lib/JvmFlags.gmk
 +++ b/make/hotspot/lib/JvmFlags.gmk
-@@ -57,6 +57,14 @@ JVM_CFLAGS_INCLUDES += \
+@@ -57,6 +57,15 @@ JVM_CFLAGS_INCLUDES += \
      -I$(TOPDIR)/src/java.base/share/native/libjimage \
      #
  
 +ifeq ($(call isTargetOs, android ios), true)
++  # The Linux port's CPU files: aarch64 on iOS (Zero), the target's on Android
 +  JVM_CFLAGS_INCLUDES += \
-+    -I$(TOPDIR)/src/hotspot/os_cpu/linux_aarch64 \
++    -I$(TOPDIR)/src/hotspot/os_cpu/linux_$(if $(filter ios, $(OPENJDK_TARGET_OS)),aarch64,$(HOTSPOT_TARGET_CPU_ARCH)) \
 +    -I$(TOPDIR)/src/hotspot/os/linux \
 +    -I$(TOPDIR)/src/hotspot/os/bsd \
 +    #

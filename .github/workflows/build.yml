@@ -17,7 +17,7 @@ on:
         default: false
   push:
     branches: [mobile-runtime]
-    paths: [build.sh, openjdk-mobile.patch, jvm_launcher.c, .github/workflows/build.yml]
+    paths: [build.sh, openjdk-mobile.patch, jvm_launcher.c, smoke/**, .github/workflows/build.yml]
 
 permissions:
   contents: write
@@ -80,7 +80,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [ios-simulator, ios-device, android]
+        # The script's target and the asset's (platform and architecture, as the JBR names them)
+        include:
+          - { target: ios-simulator, asset: ios-simulator-aarch64 }
+          - { target: ios-device, asset: ios-device-aarch64 }
+          - { target: android-aarch64, asset: android-aarch64 }
+          - { target: android-x64, asset: android-x64 }
     runs-on: macos-15
     timeout-minutes: 240
     steps:
@@ -99,7 +104,7 @@ jobs:
           java-version: ${{ env.JDK_LINE }}
       - run: brew install autoconf fontconfig
       - name: Android NDK
-        if: matrix.target == 'android'
+        if: startsWith(matrix.target, 'android')
         run: |
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;27.2.12479018" > /dev/null
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
@@ -107,17 +112,61 @@ jobs:
         env:
           SUFFIX: ${{ needs.version.outputs.suffix }}
         run: |
-          # jdk-mobile-<version>-<target>-aarch64-b<build>, as the JBR names its archives
-          asset="jdk-mobile-${SUFFIX%%|*}-${{ matrix.target }}-aarch64-b${SUFFIX##*|}"
+          # jdk-mobile-<version>-<platform>-<arch>-b<build>, as the JBR names its archives
+          asset="jdk-mobile-${SUFFIX%%|*}-${{ matrix.asset }}-b${SUFFIX##*|}"
           BOOT_JDK="$JAVA_HOME" recipe/build.sh ${{ matrix.target }} jdk dist "$asset"
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.target }}
+          name: ${{ matrix.asset }}
           path: dist/*
           retention-days: 7
 
+  # The x86_64 Android runtime on an emulator (GitHub's Linux runners have KVM; none runs an arm64 one): its launcher
+  # runs a program that exercises the JIT, threads, time zones and files
+  smoke:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: recipe
+      - uses: actions/download-artifact@v4
+        with:
+          name: android-x64
+          path: dist
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JDK_LINE }}
+      - name: Runtime and program
+        run: |
+          mkdir -p runtime smoke
+          tar -xzf dist/*.tar.gz -C runtime
+          javac --release 21 -d smoke recipe/smoke/Smoke.java
+          (cd smoke && jar --create --file ../smoke.jar *.class)
+      - name: KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 29
+          arch: x86_64
+          target: default
+          disable-animations: true
+          script: |
+            adb push runtime/jniLibs/x86_64/libjvmlauncher.so /data/local/tmp/libjvmlauncher.so
+            adb push runtime/lib /data/local/tmp/jdk
+            adb push smoke.jar /data/local/tmp/smoke.jar
+            adb shell mkdir -p /data/local/tmp/smoke-tmp
+            adb shell chmod 755 /data/local/tmp/libjvmlauncher.so
+            adb shell /data/local/tmp/libjvmlauncher.so /data/local/tmp/jdk /data/local/tmp/smoke.jar Smoke -Djava.io.tmpdir=/data/local/tmp/smoke-tmp -XX:AltTempDir=/data/local/tmp/smoke-tmp | tee smoke.out
+            grep -q "smoke ok" smoke.out
+
   release:
-    needs: [version, build]
+    needs: [version, build, smoke]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4

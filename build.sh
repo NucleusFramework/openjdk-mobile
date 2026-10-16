@@ -2,17 +2,17 @@
 # Builds OpenJDK's mobile port as a Java runtime an app embeds (see README.md), packaged as <dist>/<asset>.tar.gz with its
 # SHA-256:
 #
-#   ./build.sh ios-simulator | ios-device | android <OpenJDK 27 checkout> [dist dir] [asset name]
+#   ./build.sh ios-simulator | ios-device | android-aarch64 | android-x64 <OpenJDK 27 checkout> [dist dir] [asset name]
 #
-#   ios-*     Zero (the interpreter, as iOS forbids generated code), as static libraries the app links
-#   android   the server VM (JIT), linked into a launcher the app runs as a process (jvm_launcher.c), Android 10+
+#   ios-*       Zero (the interpreter, as iOS forbids generated code), as static libraries the app links (arm64)
+#   android-*   the server VM (JIT), linked into a launcher the app runs as a process (jvm_launcher.c), Android 10+
 #
 # Applies openjdk-mobile.patch to the checkout unless it is already applied. Needs autoconf and a boot JDK 26 or 27
 # (BOOT_JDK, else java_home -v 26); Xcode for iOS; for Android the NDK (ANDROID_NDK_HOME, else the latest of
 # $ANDROID_HOME/ndk) and fontconfig's headers (java.desktop needs them to build; FONTCONFIG_INCLUDE, else brew's).
 set -euo pipefail
 
-TARGET=${1:?ios-simulator, ios-device or android}
+TARGET=${1:?ios-simulator, ios-device, android-aarch64 or android-x64}
 SRC=$(cd "${2:?OpenJDK 27 checkout}" && pwd)
 HERE=$(cd "$(dirname "$0")" && pwd)
 mkdir -p "${3:-$HERE/dist}"
@@ -54,6 +54,8 @@ stage_jdk() {
     cp "$jdk/include/jni.h" "$jdk/include/$platform/jni_md.h" "$STAGE/include/"
     cp -RL "$jdk/conf" "$jdk/lib" "$STAGE/lib/"
     for module in $MODULES; do cp -RL "$jdk/modules/$module" "$STAGE/lib/modules/"; done
+    # The build's own files left in the exploded image (_the.java.base.vardeps...)
+    find "$STAGE/lib/modules" -name '_the.*' -delete
     for required in lib/lib/tzdb.dat lib/modules/java.base/java/lang/Object.class lib/modules/jdk.unsupported/sun/misc/Unsafe.class; do
         [ -f "$STAGE/$required" ] || { echo "Missing $required" >&2; exit 1; }
     done
@@ -113,17 +115,21 @@ build_ios() {
 }
 
 build_android() {
-    local ndk tc fontconfig conf=android-aarch64-server-release
+    local ndk tc fontconfig triple abi conf=$TARGET-server-release
+    case "$TARGET" in
+        android-aarch64) triple=aarch64-linux-android; abi=arm64-v8a ;;
+        android-x64) triple=x86_64-linux-android; abi=x86_64 ;;
+    esac
     ndk=${ANDROID_NDK_HOME:-$(ls -d "${ANDROID_HOME:-$HOME/Library/Android/sdk}"/ndk/* | sort | tail -1)}
     tc=$ndk/toolchains/llvm/prebuilt/$(ls "$ndk/toolchains/llvm/prebuilt" | head -1)
     fontconfig=${FONTCONFIG_INCLUDE:-$(brew --prefix fontconfig)/include}
 
     # The host compilers build the tools the build runs; the NDK's wrappers carry the target and its API level
     BUILD_CC=/usr/bin/clang BUILD_CXX=/usr/bin/clang++ \
-    CC=$tc/bin/aarch64-linux-android$ANDROID_API-clang CXX=$tc/bin/aarch64-linux-android$ANDROID_API-clang++ \
+    CC=$tc/bin/$triple$ANDROID_API-clang CXX=$tc/bin/$triple$ANDROID_API-clang++ \
     sh configure \
         --disable-warnings-as-errors \
-        --openjdk-target=aarch64-linux-android \
+        --openjdk-target=$triple \
         --with-conf-name=$conf \
         --with-jvm-variants=server \
         --with-boot-jdk="$BOOT_JDK" \
@@ -139,9 +145,9 @@ build_android() {
     # The launcher: an executable with the VM and the JDK's natives in, packaged as a library (Android only executes the
     # native code an APK holds)
     local build=$SRC/build/$conf libs=$SRC/build/$conf/images/static-libs/lib
-    rm -rf "$STAGE" && mkdir -p "$STAGE/jniLibs/arm64-v8a"
-    local launcher=$STAGE/jniLibs/arm64-v8a/libjvmlauncher.so
-    "$tc/bin/aarch64-linux-android$ANDROID_API-clang++" -x c -O2 -fPIE -pie \
+    rm -rf "$STAGE" && mkdir -p "$STAGE/jniLibs/$abi"
+    local launcher=$STAGE/jniLibs/$abi/libjvmlauncher.so
+    "$tc/bin/$triple$ANDROID_API-clang++" -x c -O2 -fPIE -pie \
         -I"$build/jdk/include" -I"$build/jdk/include/android" \
         "$HERE/jvm_launcher.c" \
         -x none -o "$launcher" \
@@ -154,7 +160,7 @@ build_android() {
 
 case "$TARGET" in
     ios-simulator | ios-device) build_ios ;;
-    android) build_android ;;
-    *) echo "Unknown target $TARGET (ios-simulator, ios-device or android)" >&2; exit 1 ;;
+    android-aarch64 | android-x64) build_android ;;
+    *) echo "Unknown target $TARGET (ios-simulator, ios-device, android-aarch64 or android-x64)" >&2; exit 1 ;;
 esac
 package
